@@ -1,14 +1,21 @@
+import os
+from authlib.integrations.flask_client import OAuth
+
+
+# Initialize OAuth
+oauth = OAuth(app)
+
 # Google OAuth configuration
-google = oauth.register(
+google_env = oauth.register(
     name='google',
     client_id=os.getenv('GOOGLE_CLIENT_ID'),
     client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
-    access_token_url='https://accounts.google.com/o/oauth2/token',
+    access_token_url='https://oauth2.googleapis.com/token',
     authorize_url='https://accounts.google.com/o/oauth2/auth',
     authorize_params=None,
-    access_token_params=None,
-    client_kwargs={'scope': 'openid profile email'},
-    redirect_uri=os.getenv('GOOGLE_REDIRECT_URI')
+    client_kwargs={'scope': 'openid email profile'},
+    redirect_uri='http://localhost:5000/login/callback',
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
 )
 
 # Microsoft OAuth configuration
