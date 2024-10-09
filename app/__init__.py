@@ -1,18 +1,19 @@
 from flask import Flask
-from authlib.integrations.flask_client import OAuth  # Import OAuth from Authlib
-from app.auth import auth_bp  # Import the auth blueprint
-from app.config import Config
+from app.oauth import register_oauth_providers
+from app.auth import auth_bp
+from app.config import config_by_name
+import os
 
-# Create the OAuth object
-oauth = OAuth()
-
-def create_app():
+def create_app(config_name=None):
     app = Flask(__name__)
 
-    # Load configurations from config file
-    app.config.from_object(Config)
+    #Set enviornment config
+    app.config.from_object(config_by_name.get(config_name or 'dev'))
 
-    # Register Blueprints
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')  # URL prefix for all auth routes
-    
+    # Initialize OAuth providers
+    oauth = register_oauth_providers(app)
+
+    # Register blueprints
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+
     return app

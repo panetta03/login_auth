@@ -7,7 +7,6 @@ def google_oauth(nonce):
     return oauth.google.authorize_redirect(redirect_uri, nonce=nonce)
 
 def google_oauth_callback(nonce):
-    print('test')
     token = oauth.google.authorize_access_token()
     user_info = oauth.google.parse_id_token(token, nonce=nonce)
     return user_info

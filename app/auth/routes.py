@@ -15,7 +15,6 @@ def login(provider):
     nonce = generate_nonce()
     session['nonce'] = nonce
     if provider == 'google':
-        print('The goog')
         return google_oauth(nonce)
     #elif provider == 'microsoft':
        # return microsoft_oauth(nonce)

@@ -26,12 +26,14 @@ class DevelopmentConfig(Config):
     """Development configuration class."""
     DEBUG = True
     JSONIFY_PRETTYPRINT_REGULAR = True
+    SERVER_NAME = 'localhost:5000'
 
 class TestingConfig(Config):
     """Testing configuration class."""
     TESTING = True
     DEBUG = True
     JSONIFY_PRETTYPRINT_REGULAR = True
+    SERVER_NAME = 'localhost:5000'
 
 class ProductionConfig(Config):
     """Production configuration class."""
