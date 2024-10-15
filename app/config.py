@@ -11,7 +11,7 @@ class Config:
     JSONIFY_PRETTYPRINT_REGULAR = False
 
     # Initialize secrets
-    oauth_secrets = get_secrets(secret_name="googleoauth", region_name="us-east-1")
+    oauth_secrets = get_secrets(secret_name="googleoauth", region_name="us-east-2")
 
     # OAuth Configurations
     GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
