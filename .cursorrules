@@ -1,0 +1,289 @@
+# Cursor Rules for Auth Service
+
+## Project Context
+This is an OAuth authentication microservice built with Node.js/TypeScript, Express.js, and PostgreSQL. It's designed to be API-first and integrate with AWS API Gateway and ECS. The service issues JWT tokens after OAuth authentication and tracks user activity for token invalidation.
+
+## Architecture Patterns
+- Use dependency injection for services
+- Follow repository pattern for database access (via Kysely)
+- Use factory pattern for OAuth providers
+- Implement middleware for cross-cutting concerns (auth, logging, rate limiting)
+- API-first design with OpenAPI 3.0 specification
+
+## Code Style
+- TypeScript strict mode enabled
+- Use async/await, not callbacks
+- Prefer functional programming where possible
+- Use Kysely for all database operations (SQL-first, type-safe query builder)
+- Use Zod for runtime validation
+- Follow RESTful API conventions
+- Use proper HTTP status codes
+
+## Testing
+- Write unit tests for services and utilities
+- Write integration tests for API endpoints
+- Mock external services (OAuth providers, AWS services)
+- Aim for >80% code coverage
+- Use Jest and Supertest
+
+## Security
+- Never log sensitive data (tokens, passwords, OAuth secrets)
+- Always validate and sanitize inputs using Zod
+- Use parameterized queries (Kysely automatically parameterizes all queries)
+- Implement rate limiting on all public endpoints
+- Use RS256 for JWT signing (asymmetric keys)
+- Store OAuth state in Redis with TTL
+- Validate ID tokens before trusting them
+
+## API Design
+- Follow RESTful conventions
+- Use proper HTTP status codes (200, 201, 204, 400, 401, 403, 404, 500)
+- Return consistent error response format: `{ error: string, message?: string, details?: any }`
+- Document all endpoints in OpenAPI spec (`docs/api/openapi.yaml`)
+- Version APIs: `/api/v1/...`
+
+## Database
+- Use SQL migration files for all schema changes (node-pg-migrate or similar)
+- Use Kysely for all database queries (SQL-first approach)
+- Write explicit SQL queries - Kysely provides type safety without hiding SQL
+- **Never introduce ORM abstractions or auto-generated schemas** - all schema changes must be explicit SQL migrations
+- Index foreign keys and frequently queried fields
+- Use transactions for multi-step operations
+- Design schema with compliance in mind (SOC2, GDPR, financial)
+- All queries are automatically parameterized by Kysely (SQL injection prevention)
+
+## AWS Integration
+- Use AWS SDK v3 (modular imports)
+- Retrieve secrets from Secrets Manager at startup, cache in memory
+- Use IAM roles for service permissions (not access keys in code)
+- Log to CloudWatch in structured JSON format
+- Use environment variables for region and service configuration
+
+## OAuth Providers
+- All providers must implement the OAuthProvider interface
+- Use Passport.js strategies for OAuth flows
+- Store OAuth state in Redis with TTL (10 minutes)
+- Validate ID tokens before trusting them
+- Support extensibility for future providers via factory pattern
+
+## JWT Token Management
+- Access tokens: 15 minutes expiration, RS256 signing
+- Refresh tokens: 30 days expiration, stored in database
+- Track activity in Redis (last_activity_at)
+- Invalidate tokens if inactive > 15 minutes (grace period: 30 minutes)
+- Support token blacklisting in Redis
+- Include jti (JWT ID) claim for blacklisting
+
+## Activity Tracking
+- Update last_activity_at in Redis on every authenticated API call (session-scoped using sid)
+- Update last_activity_at in PostgreSQL periodically (e.g., on token refresh/logout, not every request)
+- Activity tracking is session-scoped (sid) rather than token-scoped
+- Invalidate refresh tokens if inactive > 7 days
+- Use Redis TTL for activity cache (30 minutes)
+
+## Error Handling
+- Use custom error classes extending Error
+- Implement global error handler middleware
+- Log errors with context (user ID, IP, request ID)
+- Never expose internal error details to clients
+- Return appropriate HTTP status codes
+
+## Logging
+- Use Winston for structured logging
+- Log in JSON format for CloudWatch
+- Include request ID in all logs
+- Log levels: error, warn, info, debug
+- Never log sensitive data
+
+## Infrastructure
+- Use Terraform for infrastructure as code
+- Separate environments (dev, prod) via Terraform workspaces
+- Use ECS Fargate for compute
+- Use API Gateway for API management
+- Use RDS PostgreSQL (Multi-AZ for prod)
+- Use ElastiCache Redis for caching
+
+## When Adding Features
+1. Update OpenAPI spec first (`docs/api/openapi.yaml`)
+2. Add database migrations if needed (SQL migration files)
+3. Implement service layer (business logic)
+4. Add controller/route (API layer)
+5. Write tests (unit + integration)
+6. **Update all relevant documentation** (see Documentation Maintenance section below)
+7. Update AI state doc (`docs/ai-state.md`)
+
+## File Organization
+- Services: `src/services/` - Business logic
+- Controllers: `src/api/v1/controllers/` - Request handling
+- Routes: `src/api/v1/routes/` - Route definitions
+- Middleware: `src/api/middleware/` - Cross-cutting concerns
+- Models: `src/models/` - Type definitions (Kysely generates types from schema)
+- Utils: `src/utils/` - Shared utilities
+- Types: `src/types/` - TypeScript type definitions
+
+## Dependencies
+- Express.js: Web framework
+- Kysely: SQL-first, type-safe query builder
+- Passport.js: OAuth authentication
+- jsonwebtoken: JWT handling
+- Zod: Runtime validation
+- Winston: Logging
+- ioredis: Redis client
+- @aws-sdk/client-secrets-manager: AWS Secrets Manager
+
+## Development Workflow
+1. Create feature branch from `main`
+2. Make changes following patterns above
+3. Write/update tests
+4. Run linter and type checker
+5. **Update all relevant documentation** (see Documentation Maintenance section below)
+6. Update OpenAPI spec if API changed
+7. Create PR with description (include documentation updates)
+8. CI runs automatically (lint, test, build)
+9. Merge to main triggers CD pipeline
+
+## Documentation Maintenance (CRITICAL - No Documentation Drift)
+
+**Rule**: Documentation must be updated synchronously with code changes. Documentation drift is a critical issue.
+
+### Documentation Files to Maintain
+
+1. **`docs/api/openapi.yaml`** - API specification
+   - Update when: API endpoints added/modified/removed, request/response schemas change, error responses change
+   - Must reflect: All endpoints, request/response formats, authentication requirements, error codes
+
+2. **`docs/INTEGRATION.md`** - Integration guide for other microservices
+   - Update when: Token structure changes, validation patterns change, new endpoints added, error handling changes
+   - Must reflect: Current integration patterns, code examples, token claims, error responses
+
+3. **`TECHNICAL_PLAN.md`** - Technical architecture and design
+   - Update when: Architecture decisions change, database schema changes, infrastructure changes, security patterns change
+   - Must reflect: Current architecture, design decisions, database schema, infrastructure setup
+
+4. **`docs/ai-state.md`** - AI agent context and current state
+   - Update when: Implementation status changes, new features completed, bugs fixed, decisions made
+   - Must reflect: Current implementation status, completed features, known issues, recent changes
+
+5. **`README.md`** - Project overview and quick start
+   - Update when: Features added, setup process changes, dependencies change
+   - Must reflect: Current features, setup instructions, quick links
+
+6. **`.cursorrules`** - Development guidelines
+   - Update when: Patterns change, new conventions established, tooling changes
+   - Must reflect: Current development patterns and conventions
+
+### Documentation Update Checklist (Before Commit)
+
+When making code changes, verify documentation is updated for:
+
+- [ ] **API Changes**
+  - [ ] `docs/api/openapi.yaml` - Endpoint definitions, schemas, examples
+  - [ ] `docs/INTEGRATION.md` - Integration examples, code snippets
+  - [ ] `README.md` - Feature list, API overview
+
+- [ ] **Database Schema Changes**
+  - [ ] `TECHNICAL_PLAN.md` - Schema definitions, migration notes
+  - [ ] `docs/ai-state.md` - Schema changes documented
+
+- [ ] **Architecture/Infrastructure Changes**
+  - [ ] `TECHNICAL_PLAN.md` - Architecture diagrams, infrastructure setup
+  - [ ] `docs/ai-state.md` - Architecture decisions documented
+
+- [ ] **Security/Token Changes**
+  - [ ] `docs/INTEGRATION.md` - Token structure, validation patterns
+  - [ ] `TECHNICAL_PLAN.md` - Security patterns, token lifecycle
+
+- [ ] **Implementation Status**
+  - [ ] `docs/ai-state.md` - Current status, completed features
+
+- [ ] **Pattern/Convention Changes**
+  - [ ] `.cursorrules` - Updated patterns and guidelines
+
+### Documentation Update Rules
+
+1. **Update documentation in the same commit as code changes** - Never commit code without updating relevant documentation
+2. **Code examples must be working** - All code snippets in documentation must be tested and functional
+3. **Keep examples current** - Update code examples when APIs or patterns change
+4. **Version references** - When referencing versions (Node.js, dependencies), keep them current
+5. **Link consistency** - Ensure all cross-references between docs are valid
+6. **Date stamps** - Update "Last Updated" dates in relevant docs when making changes
+
+### Specific Update Triggers
+
+| Code Change | Documentation to Update |
+|------------|------------------------|
+| New API endpoint | `openapi.yaml`, `INTEGRATION.md`, `README.md` |
+| Modified API endpoint | `openapi.yaml`, `INTEGRATION.md` |
+| Database schema change | `TECHNICAL_PLAN.md`, `ai-state.md` |
+| Token structure change | `INTEGRATION.md`, `TECHNICAL_PLAN.md` |
+| New OAuth provider | `TECHNICAL_PLAN.md`, `ai-state.md` |
+| Infrastructure change | `TECHNICAL_PLAN.md`, `ai-state.md` |
+| Security pattern change | `INTEGRATION.md`, `TECHNICAL_PLAN.md`, `.cursorrules` |
+| Feature completion | `ai-state.md`, `README.md` |
+| Bug fix | `ai-state.md` (if significant) |
+| Pattern/convention change | `.cursorrules`, `TECHNICAL_PLAN.md` |
+
+### Pre-Commit Documentation Review
+
+Before committing, ask:
+1. Does this change affect any API contracts? → Update `openapi.yaml` and `INTEGRATION.md`
+2. Does this change how other services integrate? → Update `INTEGRATION.md`
+3. Does this change architecture or design? → Update `TECHNICAL_PLAN.md`
+4. Does this change implementation status? → Update `ai-state.md`
+5. Does this change how developers work? → Update `.cursorrules` or `README.md`
+
+**If any answer is "yes", documentation must be updated before commit.**
+
+## Common Patterns
+
+### Service Pattern
+```typescript
+import { Kysely } from 'kysely';
+import type { Database } from '../database/schema';
+
+class UserService {
+  constructor(
+    private db: Kysely<Database>,
+    private logger: Logger
+  ) {}
+
+  async getUserById(id: string) {
+    return this.db
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+  }
+}
+```
+
+### Controller Pattern
+```typescript
+export const getUser = async (req: Request, res: Response) => {
+  try {
+    const user = await userService.getUserById(req.user.id);
+    res.json(user);
+  } catch (error) {
+    next(error); // Let error handler middleware handle it
+  }
+};
+```
+
+### Error Pattern
+```typescript
+class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
+}
+```
+
+## Documentation References
+
+- **Integration Guide**: `docs/INTEGRATION.md` - For integrating auth service into other microservices
+- **Technical Plan**: `TECHNICAL_PLAN.md` - Complete architecture and implementation details
+- **AI State**: `docs/ai-state.md` - Current implementation status and decisions
+- **OpenAPI Spec**: `docs/api/openapi.yaml` - API specification
+- **Architecture Diagrams**: `docs/diagrams/architecture.mmd` - System diagrams
+

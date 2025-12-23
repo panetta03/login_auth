@@ -1,0 +1,207 @@
+# Architecture Diagrams
+
+## System Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        WEB[Web Application]
+        SPA[Single Page App]
+        MS[Microservices]
+    end
+    
+    subgraph "AWS API Gateway"
+        AGW[API Gateway<br/>REST API]
+        AGW_AUTH[Auth Integration]
+    end
+    
+    subgraph "ECS Cluster"
+        AUTH1[Auth Service<br/>Instance 1]
+        AUTH2[Auth Service<br/>Instance N]
+    end
+    
+    subgraph "Data Layer"
+        RDS[(PostgreSQL<br/>Users/Sessions)]
+        REDIS[(ElastiCache Redis<br/>Cache/Rate Limit)]
+        SECRETS[AWS Secrets Manager<br/>OAuth Credentials]
+    end
+    
+    subgraph "External"
+        GOOGLE[Google OAuth]
+        FUTURE[Future OAuth Providers]
+    end
+    
+    WEB --> AGW
+    SPA --> AGW
+    MS --> AGW
+    AGW --> AGW_AUTH
+    AGW_AUTH --> AUTH1
+    AGW_AUTH --> AUTH2
+    AUTH1 --> RDS
+    AUTH2 --> RDS
+    AUTH1 --> REDIS
+    AUTH2 --> REDIS
+    AUTH1 --> SECRETS
+    AUTH2 --> SECRETS
+    AUTH1 --> GOOGLE
+    AUTH2 --> GOOGLE
+    AUTH1 -.-> FUTURE
+    AUTH2 -.-> FUTURE
+```
+
+## Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API Gateway
+    participant Auth Service
+    participant Google OAuth
+    participant PostgreSQL
+    participant Redis
+    
+    Client->>API Gateway: GET /auth/login/google
+    API Gateway->>Auth Service: Forward request
+    Auth Service->>Auth Service: Generate state & nonce
+    Auth Service->>Redis: Store state (TTL: 10min)
+    Auth Service->>Google OAuth: Redirect with OAuth params
+    Google OAuth->>Client: OAuth consent screen
+    Client->>Google OAuth: User authenticates
+    Google OAuth->>API Gateway: GET /auth/callback/google?code=...
+    API Gateway->>Auth Service: Forward callback
+    Auth Service->>Redis: Validate state
+    Auth Service->>Google OAuth: Exchange code for tokens
+    Google OAuth->>Auth Service: ID token + access token
+    Auth Service->>Auth Service: Verify ID token signature
+    Auth Service->>PostgreSQL: Upsert user record
+    Auth Service->>Auth Service: Generate JWT (access + refresh)
+    Auth Service->>PostgreSQL: Store refresh token + session
+    Auth Service->>Redis: Cache user session (TTL: activity-based)
+    Auth Service->>Client: Return JWT tokens
+    Client->>API Gateway: API calls with JWT
+    API Gateway->>Auth Service: Validate JWT (optional)
+    Auth Service->>Redis: Check token blacklist
+    Auth Service->>API Gateway: Token valid/invalid
+```
+
+## Token Lifecycle with Activity Tracking
+
+```mermaid
+stateDiagram-v2
+    [*] --> TokenIssued: OAuth Success
+    TokenIssued --> Active: First API Call
+    Active --> Active: API Call (update last_activity)
+    Active --> Inactive: No activity > 15min
+    Inactive --> Active: API Call within grace period
+    Inactive --> Expired: No activity > grace period
+    Active --> Refreshed: Refresh token used
+    Refreshed --> TokenIssued: New tokens issued
+    Active --> Revoked: User logout/revoke
+    Expired --> [*]
+    Revoked --> [*]
+    
+    note right of Active
+        Last activity tracked
+        in Redis + PostgreSQL
+        Grace period: 30min
+    end note
+```
+
+## Database Schema Relationships
+
+```mermaid
+erDiagram
+    User ||--o{ Session : has
+    User ||--o{ RefreshToken : has
+    User ||--o{ AuditLog : generates
+    
+    User {
+        string id PK
+        string email UK
+        string name
+        string picture
+        string provider
+        string providerId
+        datetime createdAt
+        datetime updatedAt
+        datetime lastActivityAt
+    }
+    
+    Session {
+        string id PK
+        string userId FK
+        string accessToken UK
+        string refreshToken UK
+        datetime expiresAt
+        datetime lastActivityAt
+        datetime revokedAt
+        string ipAddress
+        string userAgent
+    }
+    
+    RefreshToken {
+        string id PK
+        string userId FK
+        string token UK
+        datetime expiresAt
+        datetime revokedAt
+    }
+    
+    AuditLog {
+        string id PK
+        string userId FK
+        string action
+        string provider
+        string ipAddress
+        boolean success
+        json metadata
+        datetime createdAt
+    }
+```
+
+## Deployment Architecture
+
+```mermaid
+graph TB
+    subgraph "GitHub"
+        REPO[Repository]
+        ACTIONS[GitHub Actions]
+    end
+    
+    subgraph "AWS"
+        subgraph "ECR"
+            IMAGE[Docker Image]
+        end
+        
+        subgraph "ECS"
+            CLUSTER[Fargate Cluster]
+            SERVICE[Auth Service]
+        end
+        
+        subgraph "API Gateway"
+            REST[REST API]
+            STAGE[Stage: prod]
+        end
+        
+        subgraph "Data"
+            RDS[(RDS PostgreSQL)]
+            REDIS[(ElastiCache Redis)]
+        end
+        
+        subgraph "Security"
+            SECRETS[Secrets Manager]
+            IAM[IAM Roles]
+        end
+    end
+    
+    REPO --> ACTIONS
+    ACTIONS --> IMAGE
+    IMAGE --> CLUSTER
+    CLUSTER --> SERVICE
+    REST --> SERVICE
+    SERVICE --> RDS
+    SERVICE --> REDIS
+    SERVICE --> SECRETS
+    SERVICE --> IAM
+```
+

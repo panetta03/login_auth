@@ -1,20 +1,45 @@
-# Use an official Python runtime as a parent image
-FROM python:3.8-slim
+# Multi-stage build for Node.js auth service
+FROM node:20-slim AS builder
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install any required packages from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN npm ci
 
-# Expose port 5000 to the outside world
-EXPOSE 5000
+# Copy source code
+COPY src ./src
 
-# Define environment variable for Flask
-ENV FLASK_APP=app.py
+# Build TypeScript
+RUN npm run build
 
-# Run the application
-CMD ["flask", "run", "--host=0.0.0.0"]
+# Production stage
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy built application from builder
+COPY --from=builder /app/dist ./dist
+
+# Create non-root user
+RUN useradd -m appuser 2>/dev/null || true && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start application
+CMD ["node", "dist/server.js"]
