@@ -1,5 +1,6 @@
 import { tokenService } from '../../../src/services/token/token.service';
 import { keyManager } from '../../../src/services/token/key-manager.service';
+import crypto from 'crypto';
 
 // Mock dependencies
 jest.mock('../../../src/services/token/key-manager.service', () => ({
@@ -14,6 +15,19 @@ jest.mock('../../../src/config/redis');
 jest.mock('../../../src/database/repositories/session.repository');
 
 describe('TokenService', () => {
+  // Generate a valid RSA key pair for testing
+  const { privateKey: testPrivateKey, publicKey: testPublicKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: {
+      type: 'pkcs8',
+      format: 'pem',
+    },
+    publicKeyEncoding: {
+      type: 'spki',
+      format: 'pem',
+    },
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     // Ensure initializeKeys returns a promise
@@ -22,10 +36,9 @@ describe('TokenService', () => {
 
   describe('generateAccessToken', () => {
     it('should generate a valid JWT token', async () => {
-      const mockPrivateKey = 'mock-private-key';
       const mockKid = 'key-1';
       
-      (keyManager.getPrivateKey as jest.Mock).mockReturnValue(mockPrivateKey);
+      (keyManager.getPrivateKey as jest.Mock).mockReturnValue(testPrivateKey);
       (keyManager.getCurrentKid as jest.Mock).mockReturnValue(mockKid);
 
       const user = {
