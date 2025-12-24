@@ -1,4 +1,3 @@
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import { config } from '../config';
 import { logger } from './logger';
 
@@ -15,8 +14,8 @@ export async function getSecrets(): Promise<OAuthSecrets> {
     return cachedSecrets;
   }
 
-  // In development, use environment variables
-  if (config.nodeEnv === 'development') {
+  // In development or test, use environment variables
+  if (config.nodeEnv === 'development' || config.nodeEnv === 'test') {
     const clientId = config.oauth.google.clientId?.trim();
     const clientSecret = config.oauth.google.clientSecret?.trim();
 
@@ -35,6 +34,11 @@ export async function getSecrets(): Promise<OAuthSecrets> {
   }
 
   // In production, fetch from AWS Secrets Manager
+  // Lazy import to avoid issues in test environments
+  const { SecretsManagerClient, GetSecretValueCommand } = await import(
+    '@aws-sdk/client-secrets-manager'
+  );
+
   // AWS SDK will automatically use credentials from:
   // 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
   // 2. ~/.aws/credentials file

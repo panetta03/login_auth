@@ -2,13 +2,22 @@ import { tokenService } from '../../../src/services/token/token.service';
 import { keyManager } from '../../../src/services/token/key-manager.service';
 
 // Mock dependencies
-jest.mock('../../../src/services/token/key-manager.service');
+jest.mock('../../../src/services/token/key-manager.service', () => ({
+  keyManager: {
+    initializeKeys: jest.fn().mockResolvedValue(undefined),
+    getPrivateKey: jest.fn(),
+    getCurrentKid: jest.fn(),
+    getPublicKey: jest.fn(),
+  },
+}));
 jest.mock('../../../src/config/redis');
 jest.mock('../../../src/database/repositories/session.repository');
 
 describe('TokenService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Ensure initializeKeys returns a promise
+    (keyManager.initializeKeys as jest.Mock).mockResolvedValue(undefined);
   });
 
   describe('generateAccessToken', () => {
