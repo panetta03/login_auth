@@ -13,4 +13,3 @@ export interface OAuthProvider {
     user: { id: string; email: string; name: string | null; picture: string | null };
   }>;
 }
-

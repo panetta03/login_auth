@@ -14,4 +14,3 @@ router.post('/validate', tokenController.validate);
 router.get('/info', tokenController.getInfo);
 
 export default router;
-

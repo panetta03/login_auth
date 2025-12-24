@@ -41,4 +41,3 @@ if (config.nodeEnv === 'production') {
     })
   );
 }
-

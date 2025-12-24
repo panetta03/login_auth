@@ -26,4 +26,3 @@ export function requestLogger(req: RequestWithId, res: Response, next: NextFunct
 
   next();
 }
-

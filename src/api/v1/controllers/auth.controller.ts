@@ -70,7 +70,7 @@ class AuthController {
         try {
           const decoded = jwt.decode(token, { complete: true });
           if (decoded && typeof decoded !== 'string' && typeof decoded.payload !== 'string') {
-            jti = (decoded.payload as jwt.JwtPayload).jti as string | undefined || null;
+            jti = ((decoded.payload as jwt.JwtPayload).jti as string | undefined) || null;
           }
         } catch {
           // Token already invalid
@@ -89,11 +89,7 @@ class AuthController {
       }
 
       // Log logout
-      await auditService.logLogout(
-        authReq.user.id,
-        req.ip || null,
-        req.get('user-agent') || null
-      );
+      await auditService.logLogout(authReq.user.id, req.ip || null, req.get('user-agent') || null);
 
       res.status(204).send();
     } catch (error) {

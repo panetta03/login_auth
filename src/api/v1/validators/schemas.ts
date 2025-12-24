@@ -23,13 +23,6 @@ export const validateTokenSchema = z.object({
 // User endpoint schemas (no request body schemas needed for GET endpoints)
 
 // Common validation helpers
-export function validateRequest<T>(
-  schema: z.ZodSchema<T>,
-  data: unknown
-): T {
+export function validateRequest<T>(schema: z.ZodSchema<T>, data: unknown): T {
   return schema.parse(data);
 }
-
-
-
-

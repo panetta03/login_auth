@@ -16,10 +16,12 @@ const app = express();
 app.set('trust proxy', true);
 
 // Middleware
-app.use(cors({
-  origin: config.corsOrigin,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: config.corsOrigin,
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -53,4 +55,3 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 export default app;
-

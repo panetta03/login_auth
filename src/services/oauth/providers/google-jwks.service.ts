@@ -73,4 +73,3 @@ export async function verifyGoogleIdToken(idToken: string): Promise<jwt.JwtPaylo
     throw error;
   }
 }
-

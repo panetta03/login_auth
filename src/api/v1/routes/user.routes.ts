@@ -11,4 +11,3 @@ router.get('/me', authMiddleware, userController.getMe);
 router.get('/sessions', authMiddleware, userController.getSessions);
 
 export default router;
-

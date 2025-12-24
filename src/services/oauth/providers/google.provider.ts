@@ -51,7 +51,12 @@ export const googleProvider: OAuthProvider = {
     // Validate state from Redis
     const stateData = await redis.get(`oauth:state:${state}`);
     if (!stateData) {
-      await auditService.logLoginFailure('google', req.ip || null, req.get('user-agent') || null, 'Invalid or expired OAuth state');
+      await auditService.logLoginFailure(
+        'google',
+        req.ip || null,
+        req.get('user-agent') || null,
+        'Invalid or expired OAuth state'
+      );
       throw new Error('Invalid or expired OAuth state');
     }
     const storedState = JSON.parse(stateData);
@@ -80,7 +85,7 @@ export const googleProvider: OAuthProvider = {
       throw new Error('Failed to exchange OAuth code for tokens');
     }
 
-    const tokens = await tokenResponse.json() as { id_token: string; access_token?: string };
+    const tokens = (await tokenResponse.json()) as { id_token: string; access_token?: string };
     const { id_token } = tokens;
 
     // Verify ID token signature using Google's JWKS
@@ -88,21 +93,36 @@ export const googleProvider: OAuthProvider = {
     try {
       // Full signature verification with Google's public keys
       payload = await verifyGoogleIdToken(id_token);
-      
+
       // Verify nonce
       if (payload.nonce !== storedState.nonce) {
-        await auditService.logLoginFailure('google', req.ip || null, req.get('user-agent') || null, 'Invalid nonce in ID token');
+        await auditService.logLoginFailure(
+          'google',
+          req.ip || null,
+          req.get('user-agent') || null,
+          'Invalid nonce in ID token'
+        );
         throw new Error('Invalid nonce in ID token');
       }
 
       // Verify audience
       const secrets = await getSecrets();
       if (payload.aud !== secrets.GOOGLE_CLIENT_ID) {
-        await auditService.logLoginFailure('google', req.ip || null, req.get('user-agent') || null, 'Invalid ID token audience');
+        await auditService.logLoginFailure(
+          'google',
+          req.ip || null,
+          req.get('user-agent') || null,
+          'Invalid ID token audience'
+        );
         throw new Error('Invalid ID token audience');
       }
     } catch (error) {
-      await auditService.logLoginFailure('google', req.ip || null, req.get('user-agent') || null, error instanceof Error ? error.message : 'ID token verification failed');
+      await auditService.logLoginFailure(
+        'google',
+        req.ip || null,
+        req.get('user-agent') || null,
+        error instanceof Error ? error.message : 'ID token verification failed'
+      );
       throw error;
     }
 
@@ -110,7 +130,7 @@ export const googleProvider: OAuthProvider = {
     if (!payload.sub) {
       throw new Error('Missing sub claim in ID token');
     }
-    
+
     const userInfo = {
       email: payload.email,
       name: payload.name || null,
@@ -136,12 +156,15 @@ export const googleProvider: OAuthProvider = {
     });
 
     // Generate token with session ID
-    const accessToken = await tokenService.generateAccessToken({
-      id: user.id,
-      email: user.email,
-      provider: user.provider,
-      sid: session.id,
-    }, jti);
+    const accessToken = await tokenService.generateAccessToken(
+      {
+        id: user.id,
+        email: user.email,
+        provider: user.provider,
+        sid: session.id,
+      },
+      jti
+    );
 
     // Create refresh token
     const refreshTokenExpiresAt = new Date(Date.now() + config.jwt.refreshTokenExpiry * 1000);

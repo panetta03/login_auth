@@ -60,7 +60,8 @@ export const config: Config = {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      redirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/v1/auth/callback/google',
+      redirectUri:
+        process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/v1/auth/callback/google',
     },
   },
   security: {
@@ -69,4 +70,3 @@ export const config: Config = {
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   logLevel: process.env.LOG_LEVEL || 'info',
 };
-

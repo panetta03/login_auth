@@ -19,7 +19,7 @@ export async function getSecrets(): Promise<OAuthSecrets> {
   if (config.nodeEnv === 'development') {
     const clientId = config.oauth.google.clientId?.trim();
     const clientSecret = config.oauth.google.clientSecret?.trim();
-    
+
     if (clientId && clientSecret) {
       cachedSecrets = {
         GOOGLE_CLIENT_ID: clientId,
@@ -50,18 +50,17 @@ export async function getSecrets(): Promise<OAuthSecrets> {
     });
 
     const response = await client.send(command);
-    
+
     if (!response.SecretString) {
       throw new Error('Secret string not found');
     }
 
     cachedSecrets = JSON.parse(response.SecretString) as OAuthSecrets;
     logger.info('Secrets loaded from AWS Secrets Manager');
-    
+
     return cachedSecrets;
   } catch (error) {
     logger.error('Failed to fetch secrets from AWS Secrets Manager', { error });
     throw new Error('Failed to load OAuth secrets from AWS Secrets Manager');
   }
 }
-

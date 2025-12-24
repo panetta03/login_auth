@@ -21,4 +21,3 @@ redis.on('error', (error) => {
 redis.on('close', () => {
   logger.warn('Redis connection closed');
 });
-

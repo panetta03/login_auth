@@ -20,7 +20,9 @@ export async function authMiddleware(
     const authReq = req as AuthRequest;
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid authorization header' });
+      res
+        .status(401)
+        .json({ error: 'Unauthorized', message: 'Missing or invalid authorization header' });
       return;
     }
 
@@ -38,4 +40,3 @@ export async function authMiddleware(
     res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
   }
 }
-

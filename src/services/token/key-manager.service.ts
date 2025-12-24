@@ -45,15 +45,17 @@ class KeyManagerService {
     });
 
     const response = await client.send(command);
-    
+
     if (!response.SecretString) {
       throw new Error('JWT signing keys not found in Secrets Manager');
     }
 
     const keysData = JSON.parse(response.SecretString);
-    
+
     // Load all key versions
-    for (const [kid, keyData] of Object.entries(keysData as Record<string, { privateKey: string; publicKey: string; createdAt: string }>)) {
+    for (const [kid, keyData] of Object.entries(
+      keysData as Record<string, { privateKey: string; publicKey: string; createdAt: string }>
+    )) {
       this.keys.set(kid, {
         privateKey: keyData.privateKey,
         publicKey: keyData.publicKey,
@@ -63,8 +65,8 @@ class KeyManagerService {
     }
 
     // Set current key (latest)
-    const latestKey = Array.from(this.keys.values()).sort((a, b) => 
-      b.createdAt.getTime() - a.createdAt.getTime()
+    const latestKey = Array.from(this.keys.values()).sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
     )[0];
     this.currentKid = latestKey.kid;
 
@@ -134,7 +136,14 @@ class KeyManagerService {
    * Get all public keys for JWKS endpoint
    */
   getJWKS(): Array<{ kty: string; kid: string; use: string; alg: string; n: string; e: string }> {
-    const jwks: Array<{ kty: string; kid: string; use: string; alg: string; n: string; e: string }> = [];
+    const jwks: Array<{
+      kty: string;
+      kid: string;
+      use: string;
+      alg: string;
+      n: string;
+      e: string;
+    }> = [];
 
     for (const key of this.keys.values()) {
       const keyObject = crypto.createPublicKey(key.publicKey);
@@ -165,7 +174,3 @@ class KeyManagerService {
 }
 
 export const keyManager = new KeyManagerService();
-
-
-
-

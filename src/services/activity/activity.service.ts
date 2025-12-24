@@ -27,7 +27,7 @@ export class ActivityService {
       // For now, update every 5 minutes per session
       const lastUpdate = await redis.get(`activity:pg:${sessionId}`);
       const now = Date.now();
-      
+
       if (!lastUpdate || now - parseInt(lastUpdate) > 5 * 60 * 1000) {
         await sessionRepository.updateActivity(sessionId);
         await redis.setex(`activity:pg:${sessionId}`, 300, now.toString());
@@ -44,12 +44,12 @@ export class ActivityService {
   async isSessionActive(sessionId: string): Promise<boolean> {
     try {
       const lastActivity = await redis.get(`activity:${sessionId}`);
-      
+
       if (!lastActivity) {
         // Check database as fallback
         const session = await sessionRepository.findById(sessionId);
         if (!session) return false;
-        
+
         const timeSinceActivity = Date.now() - session.last_activity_at.getTime();
         return timeSinceActivity < GRACE_PERIOD;
       }
@@ -69,7 +69,7 @@ export class ActivityService {
   async isTokenInactive(sessionId: string): Promise<boolean> {
     try {
       const lastActivity = await redis.get(`activity:${sessionId}`);
-      
+
       if (!lastActivity) {
         return false; // No activity data, assume active
       }
@@ -97,4 +97,3 @@ export class ActivityService {
 }
 
 export const activityService = new ActivityService();
-

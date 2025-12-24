@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
+import { RequestWithId } from './logger.middleware';
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -17,8 +18,9 @@ export function errorHandler(
   const isOperational = err.isOperational !== false;
 
   // Log error
+  const reqWithId = req as RequestWithId;
   logger.error('Request Error', {
-    requestId: (req as any).id,
+    requestId: reqWithId.id,
     error: {
       message: err.message,
       stack: config.nodeEnv === 'development' ? err.stack : undefined,
@@ -35,4 +37,3 @@ export function errorHandler(
     ...(config.nodeEnv === 'development' && { stack: err.stack }),
   });
 }
-

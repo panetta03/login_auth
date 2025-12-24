@@ -4,19 +4,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class UserRepository {
   async findByEmail(email: string): Promise<UserTable | undefined> {
-    return db
-      .selectFrom('users')
-      .selectAll()
-      .where('email', '=', email)
-      .executeTakeFirst();
+    return db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
   }
 
   async findById(id: string): Promise<UserTable | undefined> {
-    return db
-      .selectFrom('users')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst();
+    return db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
   }
 
   async upsertUser(user: {
@@ -47,4 +39,3 @@ export class UserRepository {
       .executeTakeFirstOrThrow();
   }
 }
-

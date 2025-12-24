@@ -1,4 +1,3 @@
-
 export interface Database {
   users: UserTable;
   sessions: SessionTable;
@@ -53,4 +52,3 @@ export interface AuditLogTable {
   metadata: Record<string, unknown> | null;
   created_at: Date;
 }
-

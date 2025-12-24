@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { tokenService } from '../../../services/token/token.service';
 import { RefreshTokenRepository } from '../../../database/repositories/refresh-token.repository';
 import { SessionRepository } from '../../../database/repositories/session.repository';
@@ -132,10 +133,15 @@ class TokenController {
       const token = authHeader.substring(7);
       const user = await tokenService.validateToken(token);
 
+      // Decode token to get jti
+      const decoded = jwt.decode(token, { complete: true });
+      const jti =
+        decoded && typeof decoded !== 'string' && decoded.payload
+          ? (decoded.payload as jwt.JwtPayload).jti
+          : undefined;
+
       // Get session info
-      const session = await sessionRepository.findByAccessTokenJti(
-        (req as any).decoded?.jti || ''
-      );
+      const session = await sessionRepository.findByAccessTokenJti(jti || '');
 
       res.json({
         userId: user.id,

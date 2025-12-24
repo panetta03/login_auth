@@ -23,11 +23,7 @@ export class SessionRepository {
   }
 
   async findById(id: string): Promise<SessionTable | undefined> {
-    return db
-      .selectFrom('sessions')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst();
+    return db.selectFrom('sessions').selectAll().where('id', '=', id).executeTakeFirst();
   }
 
   async findByAccessTokenJti(jti: string): Promise<SessionTable | undefined> {
@@ -40,11 +36,7 @@ export class SessionRepository {
   }
 
   async revokeSession(id: string): Promise<void> {
-    await db
-      .updateTable('sessions')
-      .set({ revoked_at: new Date() })
-      .where('id', '=', id)
-      .execute();
+    await db.updateTable('sessions').set({ revoked_at: new Date() }).where('id', '=', id).execute();
   }
 
   async revokeAllUserSessions(userId: string): Promise<void> {
@@ -75,4 +67,3 @@ export class SessionRepository {
       .execute();
   }
 }
-
