@@ -7,13 +7,31 @@ on:
 env:
   AWS_REGION: us-east-2
   ECR_REPOSITORY: auth-service
+  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER || 'auth-service-cluster' }}
+  ECS_SERVICE: ${{ secrets.ECS_SERVICE || 'auth-service' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type check
+        run: npm run type-check
+
+      - name: Build application
+        run: npm run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -26,33 +44,90 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache
+          cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max
+          platforms: linux/amd64
 
       - name: Update ECS service
-        env:
-          ECS_CLUSTER: auth-service-cluster
-          ECS_SERVICE: auth-service
+        id: update-service
         run: |
+          echo "Updating ECS service: ${{ env.ECS_SERVICE }} in cluster: ${{ env.ECS_CLUSTER }}"
           aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $ECS_SERVICE \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
             --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --query 'service.{ServiceName:serviceName,Status:status,DesiredCount:desiredCount,RunningCount:runningCount}' \
+            --output json > service-info.json
+          
+          cat service-info.json
+          
+          # Extract task definition ARN for later use
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          echo "task-definition=$TASK_DEF" >> $GITHUB_OUTPUT
+
+      - name: Wait for ECS service to be stable
+        run: |
+          echo "Waiting for ECS service to reach stable state..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
             --region ${{ env.AWS_REGION }}
+          
+          echo "Service is now stable!"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount}' \
+            --output json)
+          
+          echo "Service status: $SERVICE_STATUS"
+          
+          RUNNING_COUNT=$(echo $SERVICE_STATUS | jq -r '.RunningCount')
+          DESIRED_COUNT=$(echo $SERVICE_STATUS | jq -r '.DesiredCount')
+          
+          if [ "$RUNNING_COUNT" -lt "$DESIRED_COUNT" ]; then
+            echo "Error: Running count ($RUNNING_COUNT) is less than desired count ($DESIRED_COUNT)"
+            exit 1
+          fi
+          
+          echo "Deployment verified successfully!"
 
       - name: Run smoke tests
+        if: success()
         run: |
-          echo "Waiting for service to be stable..."
-          sleep 30
-          # Add health check endpoint test here
-          # curl -f https://api.example.com/health || exit 1
+          echo "Smoke tests would run here"
+          echo "Example: curl -f ${{ secrets.API_URL || 'https://api.example.com' }}/health || exit 1"
+          # Uncomment and configure when API URL is available:
+          # API_URL="${{ secrets.API_URL }}"
+          # if [ -n "$API_URL" ]; then
+          #   echo "Testing health endpoint: $API_URL/health"
+          #   curl -f "$API_URL/health" || exit 1
+          #   echo "Health check passed!"
+          # else
+          #   echo "API_URL secret not set, skipping smoke tests"
+          # fi
 
