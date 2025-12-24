@@ -35,9 +35,8 @@ export async function getSecrets(): Promise<OAuthSecrets> {
 
   // In production, fetch from AWS Secrets Manager
   // Lazy import to avoid issues in test environments
-  const { SecretsManagerClient, GetSecretValueCommand } = await import(
-    '@aws-sdk/client-secrets-manager'
-  );
+  const { SecretsManagerClient, GetSecretValueCommand } =
+    await import('@aws-sdk/client-secrets-manager');
 
   // AWS SDK will automatically use credentials from:
   // 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
