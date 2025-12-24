@@ -48,7 +48,7 @@ export const config: Config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   aws: {
-    region: process.env.AWS_REGION || 'us-east-1',
+    region: process.env.AWS_REGION || 'us-east-2',
     secretsManagerSecretName: process.env.AWS_SECRETS_MANAGER_SECRET_NAME || 'googleoauth',
   },
   jwt: {

@@ -16,18 +16,33 @@ export async function getSecrets(): Promise<OAuthSecrets> {
   }
 
   // In development, use environment variables
-  if (config.nodeEnv === 'development' && config.oauth.google.clientId) {
-    cachedSecrets = {
-      GOOGLE_CLIENT_ID: config.oauth.google.clientId,
-      GOOGLE_CLIENT_SECRET: config.oauth.google.clientSecret,
-    };
-    return cachedSecrets;
+  if (config.nodeEnv === 'development') {
+    const clientId = config.oauth.google.clientId?.trim();
+    const clientSecret = config.oauth.google.clientSecret?.trim();
+    
+    if (clientId && clientSecret) {
+      cachedSecrets = {
+        GOOGLE_CLIENT_ID: clientId,
+        GOOGLE_CLIENT_SECRET: clientSecret,
+      };
+      logger.info('OAuth secrets loaded from environment variables');
+      return cachedSecrets;
+    } else {
+      throw new Error(
+        'OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.'
+      );
+    }
   }
 
   // In production, fetch from AWS Secrets Manager
+  // AWS SDK will automatically use credentials from:
+  // 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+  // 2. ~/.aws/credentials file
+  // 3. IAM role (if running on EC2/ECS)
   try {
     const client = new SecretsManagerClient({
       region: config.aws.region,
+      // Credentials will be automatically loaded from default credential chain
     });
 
     const command = new GetSecretValueCommand({
@@ -46,7 +61,7 @@ export async function getSecrets(): Promise<OAuthSecrets> {
     return cachedSecrets;
   } catch (error) {
     logger.error('Failed to fetch secrets from AWS Secrets Manager', { error });
-    throw new Error('Failed to load OAuth secrets');
+    throw new Error('Failed to load OAuth secrets from AWS Secrets Manager');
   }
 }
 
