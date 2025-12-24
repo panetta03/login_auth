@@ -16,7 +16,7 @@ jest.mock('../../../src/database/repositories/session.repository');
 
 describe('TokenService', () => {
   // Generate a valid RSA key pair for testing
-  const { privateKey: testPrivateKey, publicKey: testPublicKey } = crypto.generateKeyPairSync('rsa', {
+  const { privateKey: testPrivateKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 2048,
     privateKeyEncoding: {
       type: 'pkcs8',
