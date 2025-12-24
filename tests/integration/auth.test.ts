@@ -1,7 +1,12 @@
 import request from 'supertest';
 import app from '../../src/app';
+import { ensureRedisConnected } from '../../src/config/redis';
 
 describe('Auth API Integration Tests', () => {
+  beforeAll(async () => {
+    // Ensure Redis is connected before running tests
+    await ensureRedisConnected();
+  });
   describe('GET /api/v1/auth/login/:provider', () => {
     it('should redirect to OAuth provider', async () => {
       const response = await request(app)

@@ -3,7 +3,7 @@ import { Request } from 'express';
 import { getSecrets } from '../../../utils/aws-secrets';
 import { logger } from '../../../utils/logger';
 import { config } from '../../../config';
-import { redis } from '../../../config/redis';
+import { redis, ensureRedisConnected } from '../../../config/redis';
 import { userService } from '../../user/user.service';
 import { SessionRepository } from '../../../database/repositories/session.repository';
 import { RefreshTokenRepository } from '../../../database/repositories/refresh-token.repository';
@@ -18,6 +18,7 @@ const refreshTokenRepository = new RefreshTokenRepository();
 
 export const googleProvider: OAuthProvider = {
   async getAuthorizationUrl(_req: Request): Promise<string> {
+    await ensureRedisConnected();
     const secrets = await getSecrets();
     const state = crypto.randomBytes(16).toString('hex');
     const nonce = crypto.randomBytes(16).toString('hex');
@@ -48,6 +49,7 @@ export const googleProvider: OAuthProvider = {
     expiresIn: number;
     user: { id: string; email: string; name: string | null; picture: string | null };
   }> {
+    await ensureRedisConnected();
     // Validate state from Redis
     const stateData = await redis.get(`oauth:state:${state}`);
     if (!stateData) {
