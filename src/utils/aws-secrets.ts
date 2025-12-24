@@ -19,18 +19,19 @@ export async function getSecrets(): Promise<OAuthSecrets> {
     const clientId = config.oauth.google.clientId?.trim();
     const clientSecret = config.oauth.google.clientSecret?.trim();
 
-    if (clientId && clientSecret) {
-      cachedSecrets = {
-        GOOGLE_CLIENT_ID: clientId,
-        GOOGLE_CLIENT_SECRET: clientSecret,
-      };
-      logger.info('OAuth secrets loaded from environment variables');
-      return cachedSecrets;
-    } else {
+    if (!clientId || !clientSecret) {
       throw new Error(
-        'OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.'
+        'OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables. ' +
+          'For tests, these should be real Google OAuth credentials configured in GitHub Secrets.'
       );
     }
+
+    cachedSecrets = {
+      GOOGLE_CLIENT_ID: clientId,
+      GOOGLE_CLIENT_SECRET: clientSecret,
+    };
+    logger.info('OAuth secrets loaded from environment variables');
+    return cachedSecrets;
   }
 
   // In production, fetch from AWS Secrets Manager
