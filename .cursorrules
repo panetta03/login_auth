@@ -142,6 +142,15 @@ This is an OAuth authentication microservice built with Node.js/TypeScript, Expr
 8. CI runs automatically (lint, test, build)
 9. Merge to main triggers CD pipeline
 
+## Pre-Push Requirements (CRITICAL)
+- **ALWAYS run tests before pushing**: `npm test` must pass locally before pushing to remote
+- **Use real credentials in tests**: Tests must use real Google OAuth credentials, not test/mock values
+  - **Local testing**: Credentials are automatically loaded from `.env` file via `dotenv` (ensure `.env` contains real `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`)
+  - **CI testing**: Credentials are pulled from GitHub Secrets (`secrets.GOOGLE_CLIENT_ID` and `secrets.GOOGLE_CLIENT_SECRET`)
+  - **Do NOT manually set Google credentials when running tests** - they are automatically loaded from `.env` locally or GitHub Secrets in CI
+- **Ensure services are available**: For integration tests, ensure Redis and PostgreSQL are running locally or use Docker services
+- **Never push failing tests**: If tests fail locally, fix them before pushing
+
 ## Documentation Maintenance (CRITICAL - No Documentation Drift)
 
 **Rule**: Documentation must be updated synchronously with code changes. Documentation drift is a critical issue.

@@ -65,6 +65,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/auth_service_test
           REDIS_URL: redis://localhost:6379
           NODE_ENV: test
+          # Google OAuth credentials from GitHub Secrets (required for integration tests)
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
 
