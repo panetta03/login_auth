@@ -156,6 +156,19 @@ jobs:
             --image-scanning-configuration scanOnPush=true \
             --encryption-configuration encryptionType=AES256
 
+      - name: Create ECS service-linked role if it doesn't exist
+        run: |
+          # Check if the service-linked role exists
+          if ! aws iam get-role --role-name AWSServiceRoleForECS --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "Creating ECS service-linked role..."
+            aws iam create-service-linked-role \
+              --aws-service-name ecs.amazonaws.com \
+              --region ${{ env.AWS_REGION }} || \
+            echo "Service-linked role may already exist or creation failed (this is OK if role exists)"
+          else
+            echo "ECS service-linked role already exists"
+          fi
+
       - name: Create ECS cluster if it doesn't exist
         run: |
           aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }} --query 'clusters[0].status' --output text | grep -q ACTIVE || \
