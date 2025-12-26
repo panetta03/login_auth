@@ -61,17 +61,28 @@ See `docs/INTEGRATION.md` for complete examples and patterns.
    # GOOGLE_CLIENT_SECRET=your-client-secret
    ```
 
-3. **Start PostgreSQL and Redis (using Docker Compose):**
+3. **Set up git hooks (optional but recommended):**
+   ```bash
+   # Windows PowerShell
+   .\scripts\setup-git-hooks.ps1
+   
+   # Linux/Mac
+   chmod +x scripts/setup-git-hooks.sh
+   ./scripts/setup-git-hooks.sh
+   ```
+   This installs a pre-commit hook that runs CI checks before each commit, ensuring code quality matches CI requirements.
+
+4. **Start PostgreSQL and Redis (using Docker Compose):**
    ```bash
    docker-compose up -d postgres redis
    ```
 
-4. **Run database migrations:**
+5. **Run database migrations:**
    ```bash
    npm run migrate:up
    ```
 
-5. **Start the development server:**
+6. **Start the development server:**
    ```bash
    npm run dev
    ```

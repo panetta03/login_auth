@@ -143,13 +143,18 @@ This is an OAuth authentication microservice built with Node.js/TypeScript, Expr
 9. Merge to main triggers CD pipeline
 
 ## Pre-Push Requirements (CRITICAL)
-- **ALWAYS run tests before pushing**: `npm test` must pass locally before pushing to remote
+- **ALWAYS run full CI checks before pushing**: Use `.\scripts\ci-local.ps1` (Windows) or `./scripts/ci-local.sh` (Linux/Mac) to run the exact same checks as GitHub Actions CI
+  - This ensures local results match CI results exactly
+  - The script runs: `npm ci`, `npm run lint`, `npm run type-check`, `npm run build`, and `npm run test:coverage`
+- **Pre-commit hooks (recommended)**: Run `.\scripts\setup-git-hooks.ps1` (Windows) or `./scripts/setup-git-hooks.sh` (Linux/Mac) once to install git hooks
+  - This automatically runs CI checks before each commit, preventing commits that would fail CI
+  - To bypass: `git commit --no-verify` (use sparingly)
 - **Use real credentials in tests**: Tests must use real Google OAuth credentials, not test/mock values
   - **Local testing**: Credentials are automatically loaded from `.env` file via `dotenv` (ensure `.env` contains real `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`)
   - **CI testing**: Credentials are pulled from GitHub Secrets (`secrets.GOOGLE_CLIENT_ID` and `secrets.GOOGLE_CLIENT_SECRET`)
   - **Do NOT manually set Google credentials when running tests** - they are automatically loaded from `.env` locally or GitHub Secrets in CI
-- **Ensure services are available**: For integration tests, ensure Redis and PostgreSQL are running locally or use Docker services
-- **Never push failing tests**: If tests fail locally, fix them before pushing
+- **Ensure services are available**: For integration tests, ensure Redis and PostgreSQL are running locally (via Docker Compose or Docker services)
+- **Never push failing tests**: If CI checks fail locally, fix them before pushing
 
 ## Documentation Maintenance (CRITICAL - No Documentation Drift)
 
