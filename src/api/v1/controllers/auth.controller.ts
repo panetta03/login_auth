@@ -29,21 +29,22 @@ class AuthController {
   async handleCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const params = validateRequest(loginParamsSchema, req.params);
-      
+
       // Check for OAuth error first
       if (req.query.error) {
-        res.status(401).json({ 
-          error: 'OAuth error', 
-          message: req.query.error as string 
+        res.status(401).json({
+          error: 'OAuth error',
+          message: req.query.error as string,
         });
         return;
       }
 
       // Validate required OAuth parameters
       if (!req.query.code || !req.query.state) {
-        res.status(400).json({ 
-          error: 'Invalid OAuth callback', 
-          message: 'Missing required OAuth parameters (code, state). Please initiate the OAuth flow by visiting /api/v1/auth/login/google'
+        res.status(400).json({
+          error: 'Invalid OAuth callback',
+          message:
+            'Missing required OAuth parameters (code, state). Please initiate the OAuth flow by visiting /api/v1/auth/login/google',
         });
         return;
       }
