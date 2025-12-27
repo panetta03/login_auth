@@ -142,14 +142,14 @@ jobs:
       - name: Terraform Init
         id: init
         run: |
-          if [ -n "${{ secrets.TERRAFORM_STATE_BUCKET }}" ]; then
+          if [ "${{ steps.check-backend.outputs.backend_configured }}" = "true" ]; then
             echo "Initializing Terraform with S3 backend..."
             terraform init \
-              -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+              -backend-config="bucket=${{ steps.check-backend.outputs.bucket_name }}" \
               -backend-config="key=${{ github.event.inputs.environment || 'dev' }}/terraform.tfstate" \
               -backend-config="region=${{ env.AWS_REGION }}" \
               -backend-config="encrypt=true" \
-              -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_BUCKET }}-lock"
+              -backend-config="dynamodb_table=${{ steps.check-backend.outputs.bucket_name }}-lock"
           else
             echo "No S3 backend configured - initializing with local backend"
             terraform init -backend=false
