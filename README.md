@@ -124,6 +124,21 @@ CORS_ORIGIN=http://localhost:3000
 5. Add authorized redirect URI: `http://localhost:3000/api/v1/auth/callback/google`
 6. Copy Client ID and Client Secret to `.env` file
 
+#### GitHub Secrets (for CI/CD)
+
+For CI/CD to work, you must add the Google OAuth credentials as GitHub Secrets:
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Add the following secrets:
+   - **Name**: `GOOGLE_CLIENT_ID`
+     - **Value**: Your Google OAuth Client ID (same as in `.env`)
+   - **Name**: `GOOGLE_CLIENT_SECRET`
+     - **Value**: Your Google OAuth Client Secret (same as in `.env`)
+
+These secrets are required for integration tests to run in CI. The tests use real Google OAuth credentials to verify the authentication flow works correctly.
+
 ### Testing the API
 
 Once running, test the health endpoint:

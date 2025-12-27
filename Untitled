@@ -1,0 +1,3 @@
+ERROR: failed to build: failed to solve: failed to push 881490096356.dkr.ecr.us-east-2.amazonaws.com/auth-service:d389d901a20e323a5ce9c0313736de987de282fb: unknown: The repository with name 'auth-service' does not exist in the registry with id '881490096356'
+321
+Error: buildx failed with: ERROR: failed to build: failed to solve: failed to push 881490096356.dkr.ecr.us-east-2.amazonaws.com/auth-service:d389d901a20e323a5ce9c0313736de987de282fb: unknown: The repository with name 'auth-service' does not exist in the registry with id '881490096356'
