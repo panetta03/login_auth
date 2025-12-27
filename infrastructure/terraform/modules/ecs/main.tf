@@ -38,6 +38,30 @@ variable "secrets_manager_secret_name" {
   type = string
 }
 
+variable "ecs_min_capacity" {
+  description = "Minimum number of ECS tasks (use 1 for dev to save costs)"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_max_capacity" {
+  description = "Maximum number of ECS tasks (use 2 for dev, 10 for prod)"
+  type        = number
+  default     = 10
+}
+
+variable "ecs_cpu" {
+  description = "CPU units for ECS task (256, 512, 1024, etc.). Use 256 for dev to save costs"
+  type        = number
+  default     = 256
+}
+
+variable "ecs_memory" {
+  description = "Memory (MB) for ECS task. Use 512 for dev to save costs"
+  type        = number
+  default     = 512
+}
+
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
   name = "${var.environment}-auth-service-cluster"
@@ -174,8 +198,8 @@ resource "aws_ecs_task_definition" "main" {
   family                   = "${var.environment}-auth-service"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = var.ecs_cpu
+  memory                   = var.ecs_memory
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
@@ -248,7 +272,7 @@ resource "aws_ecs_service" "main" {
   name            = "${var.environment}-auth-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.main.arn
-  desired_count   = var.environment == "prod" ? 2 : 1
+  desired_count   = var.ecs_min_capacity
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -357,8 +381,8 @@ resource "aws_iam_role" "ecs_task" {
 
 # Auto Scaling
 resource "aws_appautoscaling_target" "ecs_target" {
-  max_capacity       = 10
-  min_capacity       = var.environment == "prod" ? 2 : 1
+  max_capacity       = var.ecs_max_capacity
+  min_capacity       = var.ecs_min_capacity
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.main.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

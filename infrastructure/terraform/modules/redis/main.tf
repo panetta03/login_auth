@@ -17,6 +17,30 @@ variable "node_type" {
   default = "cache.t3.medium"
 }
 
+variable "num_cache_clusters" {
+  description = "Number of cache clusters (nodes) in the replication group. Use 1 for dev (faster), 2+ for prod (HA)"
+  type        = number
+  default     = 2
+}
+
+variable "automatic_failover_enabled" {
+  description = "Enable automatic failover (requires num_cache_clusters >= 2)"
+  type        = bool
+  default     = true
+}
+
+variable "multi_az_enabled" {
+  description = "Enable Multi-AZ deployment (requires num_cache_clusters >= 2)"
+  type        = bool
+  default     = true
+}
+
+variable "snapshot_retention_limit" {
+  description = "Number of days to retain snapshots (0-35). Use lower values for dev to save costs"
+  type        = number
+  default     = 7
+}
+
 variable "allowed_security_groups" {
   type = list(string)
 }
@@ -64,14 +88,14 @@ resource "aws_elasticache_replication_group" "main" {
   node_type                  = var.node_type
   port                       = 6379
   parameter_group_name       = "default.redis7"
-  num_cache_clusters         = 2
-  automatic_failover_enabled = true
-  multi_az_enabled           = true
+  num_cache_clusters         = var.num_cache_clusters
+  automatic_failover_enabled = var.num_cache_clusters >= 2 ? var.automatic_failover_enabled : false
+  multi_az_enabled           = var.num_cache_clusters >= 2 ? var.multi_az_enabled : false
   subnet_group_name          = aws_elasticache_subnet_group.main.name
   security_group_ids         = [aws_security_group.redis.id]
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
-  snapshot_retention_limit   = 7
+  snapshot_retention_limit   = var.snapshot_retention_limit
   snapshot_window            = "03:00-05:00"
 
   tags = {
@@ -82,13 +106,15 @@ resource "aws_elasticache_replication_group" "main" {
 
 output "endpoint" {
   description = "Redis primary endpoint"
-  value       = aws_elasticache_replication_group.main.configuration_endpoint_address
-  sensitive   = true
+  # For single-node (num_cache_clusters=1), use primary_endpoint_address
+  # For multi-node (num_cache_clusters>=2), use configuration_endpoint_address
+  value     = var.num_cache_clusters == 1 ? aws_elasticache_replication_group.main.primary_endpoint_address : aws_elasticache_replication_group.main.configuration_endpoint_address
+  sensitive = true
 }
 
 output "redis_url" {
   description = "Redis connection URL"
-  value       = "redis://${aws_elasticache_replication_group.main.configuration_endpoint_address}:6379"
+  value       = var.num_cache_clusters == 1 ? "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" : "redis://${aws_elasticache_replication_group.main.configuration_endpoint_address}:6379"
   sensitive   = true
 }
 

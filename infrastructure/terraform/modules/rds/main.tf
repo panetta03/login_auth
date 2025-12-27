@@ -35,6 +35,18 @@ variable "db_password" {
   sensitive = true
 }
 
+variable "db_multi_az" {
+  description = "Enable Multi-AZ deployment for RDS (increases cost ~2x, use false for dev)"
+  type        = bool
+  default     = false
+}
+
+variable "backup_retention_period" {
+  description = "Number of days to retain automated backups (0-35). Use lower values for dev to save costs"
+  type        = number
+  default     = 7
+}
+
 variable "allowed_security_groups" {
   type = list(string)
 }
@@ -92,8 +104,9 @@ resource "aws_db_instance" "main" {
   password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
+  multi_az               = var.db_multi_az
 
-  backup_retention_period = 7
+  backup_retention_period = var.backup_retention_period
   backup_window           = "03:00-04:00"
   maintenance_window      = "mon:04:00-mon:05:00"
 

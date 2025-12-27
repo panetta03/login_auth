@@ -52,6 +52,8 @@ module "rds" {
   db_name                 = var.db_name
   db_username             = var.db_username
   db_password             = var.db_password
+  db_multi_az             = var.db_multi_az
+  backup_retention_period = var.db_backup_retention_period
   allowed_security_groups = [module.ecs.security_group_id]
 }
 
@@ -59,11 +61,15 @@ module "rds" {
 module "redis" {
   source = "./modules/redis"
 
-  environment             = var.environment
-  vpc_id                  = module.vpc.vpc_id
-  private_subnet_ids      = module.vpc.private_subnet_ids
-  node_type               = var.redis_node_type
-  allowed_security_groups = [module.ecs.security_group_id]
+  environment                = var.environment
+  vpc_id                     = module.vpc.vpc_id
+  private_subnet_ids         = module.vpc.private_subnet_ids
+  node_type                  = var.redis_node_type
+  num_cache_clusters         = var.redis_num_cache_clusters
+  automatic_failover_enabled = var.redis_automatic_failover_enabled
+  multi_az_enabled           = var.redis_multi_az_enabled
+  snapshot_retention_limit   = var.redis_snapshot_retention_limit
+  allowed_security_groups    = [module.ecs.security_group_id]
 }
 
 # ECS Module
@@ -79,6 +85,10 @@ module "ecs" {
   redis_url                   = module.redis.redis_url
   aws_region                  = var.aws_region
   secrets_manager_secret_name = var.secrets_manager_secret_name
+  ecs_min_capacity            = var.ecs_min_capacity
+  ecs_max_capacity            = var.ecs_max_capacity
+  ecs_cpu                     = var.ecs_cpu
+  ecs_memory                  = var.ecs_memory
 }
 
 # API Gateway Module
