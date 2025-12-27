@@ -83,12 +83,11 @@ export class ActivityService {
   }
 
   /**
-   * Clean up inactive sessions (scheduled job)
+   * Clean up inactive sessions
    */
   async cleanupInactiveSessions(): Promise<void> {
     try {
-      // This would be called by a scheduled job
-      // For now, just log that it should be implemented
+      // Cleans up inactive sessions (to be implemented as scheduled job)
       logger.info('Cleanup inactive sessions - to be implemented as scheduled job');
     } catch (error) {
       logger.error('Failed to cleanup inactive sessions', { error });

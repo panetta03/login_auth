@@ -190,8 +190,8 @@ auth-service/
 ├── .cursorrules                    # Cursor AI rules
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                  # CI pipeline
-│       └── cd.yml                  # CD pipeline
+│       ├── ci-cd.yml               # CI/CD pipeline (tests, builds, deploys)
+│       └── infrastructure.yml      # Infrastructure pipeline (Terraform)
 ├── docs/
 │   ├── architecture.md             # Architecture docs
 │   ├── api/
@@ -987,43 +987,44 @@ infrastructure/terraform/
 
 ### GitHub Actions Workflows
 
-#### CI Pipeline (`.github/workflows/ci.yml`)
+#### CI/CD Pipeline (`.github/workflows/ci-cd.yml`)
 
-```yaml
-name: CI
+Combined CI/CD pipeline that:
+- **On Pull Requests**: Runs tests, linting, type checking, and builds
+- **On Push to main**: Additionally builds Docker image, pushes to ECR, and deploys to ECS
 
-on:
-  pull_request:
-    branches: [main, develop]
+**Key Features:**
+- Uses GitHub Secrets for AWS credentials and OAuth credentials
+- Automatically creates ECR repository if it doesn't exist
+- Automatically creates ECS cluster if it doesn't exist
+- Updates existing ECS service (infrastructure must be created via Terraform first)
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run type-check
-      - run: npm run test:coverage
-      - run: npm run build
-      - uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage/lcov.info
+**Required Secrets:**
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - AWS credentials
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth credentials (for tests)
+- `ECS_CLUSTER` / `ECS_SERVICE` - Optional, defaults to `auth-service-cluster` / `auth-service`
 
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-```
+**Note**: If using Terraform, cluster/service names are environment-prefixed (e.g., `dev-auth-service-cluster`). Set `ECS_CLUSTER` and `ECS_SERVICE` secrets to match your Terraform outputs.
 
-#### CD Pipeline (`.github/workflows/cd.yml`)
+#### Infrastructure Pipeline (`.github/workflows/infrastructure.yml`)
+
+Manages infrastructure via Terraform:
+- **Manual trigger**: Choose environment (dev/prod) and action (plan/apply/destroy)
+- **Automatic trigger**: On push to `main` with `infrastructure/**` changes (runs plan, optionally auto-apply)
+
+**Key Features:**
+- Automatically creates S3 bucket and DynamoDB table for Terraform state
+- Uses separate state files per environment (`dev/terraform.tfstate`, `prod/terraform.tfstate`)
+- Supports auto-apply via repository variable `TERRAFORM_AUTO_APPLY`
+
+**Required Secrets:**
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - AWS credentials
+- `DB_USERNAME` / `DB_PASSWORD` - Database credentials for RDS
+
+**Repository Variables:**
+- `TERRAFORM_AUTO_APPLY` - Set to `"true"` to auto-apply on push (optional)
+
+#### Legacy CD Pipeline (`.github/workflows/cd.yml`)
 
 ```yaml
 name: CD

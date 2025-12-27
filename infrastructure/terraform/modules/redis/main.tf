@@ -93,5 +93,3 @@ output "redis_url" {
 }
 
 
-
-

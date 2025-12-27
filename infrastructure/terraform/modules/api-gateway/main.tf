@@ -139,5 +139,3 @@ output "api_gateway_url" {
 data "aws_region" "current" {}
 
 
-
-

@@ -25,13 +25,14 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging
+// Log all HTTP requests with method, path, IP, and response status
 app.use(requestLogger);
 
 // Rate limiting
 app.use(rateLimiter);
 
-// Health check (no rate limiting)
+// Health check routes (no rate limiting)
+// Both /health and /ready are handled by the same router
 app.use('/health', healthRoutes);
 app.use('/ready', healthRoutes);
 
@@ -40,8 +41,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/auth/token', tokenRoutes);
 app.use('/api/v1/auth', userRoutes);
 
-// JWKS endpoint
-app.use('/api/v1/.well-known', jwksRoutes);
+// JWKS endpoint (OAuth 2.0 standard path)
+app.use('/.well-known/jwks.json', jwksRoutes);
 
 // 404 handler
 app.use((req, res) => {

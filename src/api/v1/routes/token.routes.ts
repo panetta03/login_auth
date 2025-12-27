@@ -7,10 +7,7 @@ const router = Router();
 // Refresh token
 router.post('/refresh', authRateLimiter, tokenController.refresh);
 
-// Validate token (introspection endpoint)
+// Validate token (introspection endpoint for debugging/admin)
 router.post('/validate', tokenController.validate);
-
-// Get token info
-router.get('/info', tokenController.getInfo);
 
 export default router;

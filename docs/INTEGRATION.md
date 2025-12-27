@@ -12,7 +12,7 @@ This guide helps AI agents and developers quickly integrate the Auth Service int
 
 ```typescript
 // Fetch and cache the public key from Auth Service
-const JWKS_URL = 'https://api.example.com/api/v1/.well-known/jwks.json';
+const JWKS_URL = 'https://api.example.com/.well-known/jwks.json';
 
 async function getPublicKey(): Promise<string> {
   const response = await fetch(JWKS_URL, {
@@ -32,7 +32,7 @@ import jwksClient from 'jwks-rsa';
 
 // Initialize JWKS client (handles caching automatically)
 const client = jwksClient({
-  jwksUri: 'https://api.example.com/api/v1/.well-known/jwks.json',
+  jwksUri: 'https://api.example.com/.well-known/jwks.json',
   cache: true,
   cacheMaxAge: 600000, // 10 minutes
 });
@@ -101,7 +101,7 @@ import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
 
 const jwksClient = jwksClient({
-  jwksUri: process.env.AUTH_JWKS_URL || 'https://api.example.com/api/v1/.well-known/jwks.json',
+  jwksUri: process.env.AUTH_JWKS_URL || 'https://api.example.com/.well-known/jwks.json',
   cache: true,
   cacheMaxAge: 600000, // 10 minutes
   rateLimit: true,
@@ -380,7 +380,7 @@ export function handleAuthError(error: Error, req: Request, res: Response, next:
 
 ```bash
 # Auth Service JWKS URL
-AUTH_JWKS_URL=https://api.example.com/api/v1/.well-known/jwks.json
+AUTH_JWKS_URL=https://api.example.com/.well-known/jwks.json
 
 # Optional: For introspection endpoint (if used)
 AUTH_SERVICE_API_KEY=your-api-key-here

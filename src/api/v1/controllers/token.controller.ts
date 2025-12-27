@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { tokenService } from '../../../services/token/token.service';
 import { RefreshTokenRepository } from '../../../database/repositories/refresh-token.repository';
 import { SessionRepository } from '../../../database/repositories/session.repository';
@@ -63,7 +62,7 @@ class TokenController {
         jti
       );
 
-      // Update session with new access token JTI (revoke old, create new)
+      // Create new session with rotated access token (security best practice: session rotation)
       const expiresAt = new Date(Date.now() + config.jwt.accessTokenExpiry * 1000);
       await sessionRepository.revokeSession(session.id);
       const newSession = await sessionRepository.createSession({
@@ -120,36 +119,6 @@ class TokenController {
         valid: false,
         error: error instanceof Error ? error.message : 'Invalid token',
       });
-    }
-  }
-
-  async getInfo(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        throw new ValidationError('Missing authorization header');
-      }
-
-      const token = authHeader.substring(7);
-      const user = await tokenService.validateToken(token);
-
-      // Decode token to get jti
-      const decoded = jwt.decode(token, { complete: true });
-      const jti =
-        decoded && typeof decoded !== 'string' && decoded.payload
-          ? (decoded.payload as jwt.JwtPayload).jti
-          : undefined;
-
-      // Get session info
-      const session = await sessionRepository.findByAccessTokenJti(jti || '');
-
-      res.json({
-        userId: user.id,
-        expiresAt: session?.expires_at,
-        lastActivityAt: session?.last_activity_at,
-      });
-    } catch (error) {
-      next(error);
     }
   }
 }

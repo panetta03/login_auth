@@ -23,6 +23,3 @@ ecr_repository_url = "881490096356.dkr.ecr.us-east-2.amazonaws.com/auth-service"
 # Secrets Manager
 secrets_manager_secret_name = "googleoauth"
 
-
-
-

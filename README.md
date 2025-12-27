@@ -162,9 +162,57 @@ curl http://localhost:3000/api/v1/auth/login/google
 - **Infrastructure**: AWS ECS Fargate + API Gateway
 - **IaC**: Terraform
 
+## Infrastructure (Terraform)
+
+### Local Development
+
+For local Terraform development, see the [Terraform README](infrastructure/terraform/README.md).
+
+**Quick Start:**
+```bash
+# 1. Set up backend configuration
+cd infrastructure/terraform
+cp backend.local.hcl.example backend.local.hcl
+# Edit backend.local.hcl with your values
+
+# 2. Set environment variables
+export TF_VAR_db_username="your_db_user"
+export TF_VAR_db_password="your_db_password"
+
+# 3. Initialize and plan
+terraform init -backend-config=backend.local.hcl
+terraform plan -var-file=environments/dev/terraform.tfvars
+```
+
+**Using Helper Scripts:**
+```bash
+# Windows PowerShell
+.\infrastructure\terraform\scripts\terraform-local.ps1 plan dev
+
+# Linux/Mac
+chmod +x infrastructure/terraform/scripts/terraform-local.sh
+./infrastructure/terraform/scripts/terraform-local.sh plan dev
+```
+
+### GitHub Actions Deployment
+
+For GitHub Actions setup, see the [GitHub Setup Guide](docs/GITHUB_SETUP.md).
+
+**Required GitHub Secrets:**
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - AWS credentials
+- `DB_USERNAME` / `DB_PASSWORD` - Database credentials for RDS
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth credentials (for tests)
+
+**Repository Variables:**
+- `TERRAFORM_AUTO_APPLY` - Set to `"true"` for auto-apply on push (optional)
+
 ## Documentation
 
 - `docs/INTEGRATION.md` - Integration guide for other microservices
+- `docs/GITHUB_SETUP.md` - GitHub Actions and secrets configuration
+- `docs/TERRAFORM_LOCAL_VS_GITHUB.md` - Terraform local vs GitHub Actions best practices
+- `infrastructure/README.md` - Infrastructure setup overview
+- `infrastructure/terraform/README.md` - Terraform local development guide
 - `TECHNICAL_PLAN.md` - Complete technical specification
 - `docs/ai-state.md` - AI agent context and decisions
 - `docs/diagrams/architecture.mmd` - Architecture diagrams

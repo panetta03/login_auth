@@ -47,6 +47,9 @@ env/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+backend.local.hcl
+backend.*.hcl
+!backend.*.hcl.example
 
 # AWS
 .aws/

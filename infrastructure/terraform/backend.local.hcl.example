@@ -1,0 +1,10 @@
+# Backend Configuration for Local Development
+# Copy this file to backend.local.hcl and fill in your values
+# This file is gitignored to prevent committing sensitive information
+
+bucket         = "auth-service-terraform-state-dev-us-east-2"
+key            = "dev/terraform.tfstate"
+region         = "us-east-2"
+encrypt        = true
+dynamodb_table = "auth-service-terraform-state-dev-us-east-2-lock"
+

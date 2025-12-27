@@ -90,4 +90,3 @@ module "api_gateway" {
   ecs_service_arn = module.ecs.service_arn
   alb_dns_name    = module.ecs.alb_dns_name
 }
-

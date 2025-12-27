@@ -25,5 +25,3 @@ api_gateway_throttle_rate_limit = 1000
 api_gateway_throttle_burst_limit = 2000
 
 
-
-
