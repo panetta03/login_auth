@@ -20,6 +20,18 @@ provider "aws" {
   region = var.aws_region
 }
 
+# Local values for state bucket name
+locals {
+  state_bucket_name = var.terraform_state_bucket_name != "" ? var.terraform_state_bucket_name : "auth-service-terraform-state-${var.environment}-${var.aws_region}"
+}
+
+# State Backend Module (creates S3 bucket and DynamoDB table for Terraform state)
+module "state_backend" {
+  source = "./modules/state-backend"
+
+  state_bucket_name = local.state_bucket_name
+}
+
 # VPC Module
 module "vpc" {
   source = "./modules/vpc"

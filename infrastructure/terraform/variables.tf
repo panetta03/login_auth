@@ -61,3 +61,9 @@ variable "secrets_manager_secret_name" {
   default     = "googleoauth"
 }
 
+variable "terraform_state_bucket_name" {
+  description = "Name of the S3 bucket for Terraform state (must be globally unique). If not provided, will be auto-generated based on environment and region."
+  type        = string
+  default     = ""
+}
+
