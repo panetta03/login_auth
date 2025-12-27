@@ -1,6 +1,6 @@
 # Development Environment Variables
 
-aws_region = "us-east-2"
+aws_region  = "us-east-2"
 environment = "dev"
 
 # Database
@@ -8,9 +8,9 @@ environment = "dev"
 # db_username = "your_db_username"
 # db_password = "your_secure_password"  # Use AWS Secrets Manager in production
 
-db_instance_class = "db.t3.micro"
+db_instance_class    = "db.t3.micro"
 db_allocated_storage = 20
-db_name = "auth_service"
+db_name              = "auth_service"
 
 # Redis
 redis_node_type = "cache.t3.micro"

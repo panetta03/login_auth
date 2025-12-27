@@ -44,14 +44,14 @@ module "vpc" {
 module "rds" {
   source = "./modules/rds"
 
-  environment           = var.environment
-  vpc_id                = module.vpc.vpc_id
-  private_subnet_ids    = module.vpc.private_subnet_ids
-  db_instance_class     = var.db_instance_class
-  db_allocated_storage  = var.db_allocated_storage
-  db_name               = var.db_name
-  db_username           = var.db_username
-  db_password           = var.db_password
+  environment             = var.environment
+  vpc_id                  = module.vpc.vpc_id
+  private_subnet_ids      = module.vpc.private_subnet_ids
+  db_instance_class       = var.db_instance_class
+  db_allocated_storage    = var.db_allocated_storage
+  db_name                 = var.db_name
+  db_username             = var.db_username
+  db_password             = var.db_password
   allowed_security_groups = [module.ecs.security_group_id]
 }
 
@@ -59,10 +59,10 @@ module "rds" {
 module "redis" {
   source = "./modules/redis"
 
-  environment        = var.environment
-  vpc_id             = module.vpc.vpc_id
-  private_subnet_ids = module.vpc.private_subnet_ids
-  node_type          = var.redis_node_type
+  environment             = var.environment
+  vpc_id                  = module.vpc.vpc_id
+  private_subnet_ids      = module.vpc.private_subnet_ids
+  node_type               = var.redis_node_type
   allowed_security_groups = [module.ecs.security_group_id]
 }
 
@@ -70,14 +70,14 @@ module "redis" {
 module "ecs" {
   source = "./modules/ecs"
 
-  environment              = var.environment
-  vpc_id                   = module.vpc.vpc_id
-  public_subnet_ids       = module.vpc.public_subnet_ids
-  private_subnet_ids      = module.vpc.private_subnet_ids
-  ecr_repository_url      = var.ecr_repository_url
-  database_url            = module.rds.database_url
-  redis_url               = module.redis.redis_url
-  aws_region              = var.aws_region
+  environment                 = var.environment
+  vpc_id                      = module.vpc.vpc_id
+  public_subnet_ids           = module.vpc.public_subnet_ids
+  private_subnet_ids          = module.vpc.private_subnet_ids
+  ecr_repository_url          = var.ecr_repository_url
+  database_url                = module.rds.database_url
+  redis_url                   = module.redis.redis_url
+  aws_region                  = var.aws_region
   secrets_manager_secret_name = var.secrets_manager_secret_name
 }
 

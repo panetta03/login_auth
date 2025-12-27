@@ -58,21 +58,21 @@ resource "aws_security_group" "redis" {
 # ElastiCache Replication Group (Multi-AZ)
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id       = "${var.environment}-auth-service-redis"
-  description                 = "Redis cluster for auth service"
-  engine                      = "redis"
-  engine_version              = "7.0"
-  node_type                   = var.node_type
-  port                        = 6379
-  parameter_group_name        = "default.redis7"
-  num_cache_clusters          = 2
-  automatic_failover_enabled  = true
+  description                = "Redis cluster for auth service"
+  engine                     = "redis"
+  engine_version             = "7.0"
+  node_type                  = var.node_type
+  port                       = 6379
+  parameter_group_name       = "default.redis7"
+  num_cache_clusters         = 2
+  automatic_failover_enabled = true
   multi_az_enabled           = true
-  subnet_group_name           = aws_elasticache_subnet_group.main.name
-  security_group_ids          = [aws_security_group.redis.id]
-  at_rest_encryption_enabled  = true
-  transit_encryption_enabled   = true
-  snapshot_retention_limit     = 7
-  snapshot_window             = "03:00-05:00"
+  subnet_group_name          = aws_elasticache_subnet_group.main.name
+  security_group_ids         = [aws_security_group.redis.id]
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  snapshot_retention_limit   = 7
+  snapshot_window            = "03:00-05:00"
 
   tags = {
     Name        = "${var.environment}-auth-service-redis"
