@@ -174,7 +174,13 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        if: github.event.inputs.action == 'plan' || github.event_name == 'push'
+        # Plan runs when:
+        # 1. Manually triggered with action='plan' or 'apply' (apply needs plan first)
+        # 2. Push event (for auto-plan or auto-apply)
+        if: |
+          github.event.inputs.action == 'plan' ||
+          github.event.inputs.action == 'apply' ||
+          github.event_name == 'push'
         run: |
           terraform plan \
             -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
@@ -182,13 +188,54 @@ jobs:
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="terraform_state_bucket_name=${{ steps.state-bucket.outputs.bucket_name }}" \
             -out=tfplan \
-            -no-color
+            -no-color | tee plan-output.txt
         working-directory: infrastructure/terraform
         continue-on-error: true
 
       - name: Terraform Plan Status
         if: steps.plan.outcome == 'failure'
         run: exit 1
+
+      - name: Display Plan Summary
+        if: |
+          steps.plan.outcome == 'success' &&
+          (github.event.inputs.action == 'apply' || github.event.inputs.action == 'plan')
+        run: |
+          echo "## 📋 Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** \`${{ github.event.inputs.environment || 'dev' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** \`${{ github.event.inputs.action || github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract summary line (e.g., "Plan: X to add, Y to change, Z to destroy")
+          if grep -q "Plan:" plan-output.txt; then
+            echo "### 📊 Resource Changes:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            grep "Plan:" plan-output.txt | head -1 >> $GITHUB_STEP_SUMMARY || true
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### Full Plan Output:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```terraform' >> $GITHUB_STEP_SUMMARY
+          cat plan-output.txt >> $GITHUB_STEP_SUMMARY || echo "Plan output not available" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ github.event.inputs.action }}" = "apply" ]; then
+            echo "**⚠️ IMPORTANT: Review the plan above carefully before approving the apply step.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The apply step will require manual approval via GitHub Environment protection rules." >> $GITHUB_STEP_SUMMARY
+          fi
+        working-directory: infrastructure/terraform
+
+      - name: Upload Plan Output
+        if: steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.event.inputs.environment || 'dev' }}-${{ github.run_number }}
+          path: infrastructure/terraform/plan-output.txt
+          retention-days: 7
 
       - name: Check Auto-Apply Setting
         id: check-auto-apply
@@ -201,12 +248,16 @@ jobs:
 
       - name: Terraform Apply
         # Apply runs when:
-        # 1. Manually triggered with action='apply'
+        # 1. Manually triggered with action='apply' (requires manual approval via environment protection)
         # 2. Auto-apply is enabled via repository variable and this is a push event
+        # Note: For manual apply, GitHub Environment protection rules will require approval
         if: |
           github.event.inputs.action == 'apply' ||
           (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
-        run: terraform apply -auto-approve -no-color tfplan
+        run: |
+          echo "🚀 Applying Terraform plan..."
+          terraform apply -auto-approve -no-color tfplan
+          echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
       - name: Terraform Destroy

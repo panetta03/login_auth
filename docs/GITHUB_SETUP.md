@@ -136,6 +136,19 @@ The `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are used by:
 **Uses Variables**:
 - `TERRAFORM_AUTO_APPLY` → Controls auto-apply behavior
 
+**Manual Approval for Apply**:
+- When running `action='apply'`, the workflow will:
+  1. Run `terraform plan` and display the plan output
+  2. Upload the plan as an artifact for review
+  3. Require manual approval via GitHub Environment protection rules before applying
+
+**Setting Up Environment Protection Rules** (Recommended for Production):
+1. Go to **Settings** → **Environments**
+2. Create or edit the `dev` and `prod` environments
+3. Enable **Required reviewers** (add yourself or your team)
+4. Optionally set **Wait timer** (e.g., 5 minutes for review)
+5. The apply step will pause and wait for approval before proceeding
+
 ## Testing Secrets Configuration
 
 ### Test AWS Credentials
