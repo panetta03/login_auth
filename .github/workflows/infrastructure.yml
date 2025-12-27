@@ -46,10 +46,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create S3 bucket for Terraform state if needed
-        if: secrets.TERRAFORM_STATE_BUCKET != ''
+      - name: Check if S3 backend is configured
+        id: check-backend
         run: |
-          BUCKET_NAME="${{ secrets.TERRAFORM_STATE_BUCKET }}"
+          if [ -n "${{ secrets.TERRAFORM_STATE_BUCKET }}" ]; then
+            echo "backend_configured=true" >> $GITHUB_OUTPUT
+            echo "bucket_name=${{ secrets.TERRAFORM_STATE_BUCKET }}" >> $GITHUB_OUTPUT
+          else
+            echo "backend_configured=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create S3 bucket for Terraform state if needed
+        if: steps.check-backend.outputs.backend_configured == 'true'
+        run: |
+          BUCKET_NAME="${{ steps.check-backend.outputs.bucket_name }}"
           
           # Check if bucket exists
           if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
@@ -93,9 +103,9 @@ jobs:
           fi
 
       - name: Create DynamoDB table for state locking if needed
-        if: secrets.TERRAFORM_STATE_BUCKET != ''
+        if: steps.check-backend.outputs.backend_configured == 'true'
         run: |
-          TABLE_NAME="${{ secrets.TERRAFORM_STATE_BUCKET }}-lock"
+          TABLE_NAME="${{ steps.check-backend.outputs.bucket_name }}-lock"
           
           # Check if table exists
           if aws dynamodb describe-table --table-name "$TABLE_NAME" --region "${{ env.AWS_REGION }}" 2>/dev/null; then
