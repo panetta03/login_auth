@@ -71,17 +71,24 @@ jobs:
       - name: Terraform Init
         id: init
         run: |
-          if [ "${{ steps.check-backend.outputs.backend_configured }}" = "true" ]; then
-            echo "Initializing Terraform with S3 backend..."
-            terraform init \
-              -backend-config="bucket=${{ steps.check-backend.outputs.bucket_name }}" \
-              -backend-config="key=${{ github.event.inputs.environment || 'dev' }}/terraform.tfstate" \
-              -backend-config="region=${{ env.AWS_REGION }}" \
-              -backend-config="encrypt=true" \
-              -backend-config="dynamodb_table=${{ steps.check-backend.outputs.bucket_name }}-lock"
+          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          
+          # Try S3 backend first (if bucket exists)
+          echo "Attempting to initialize with S3 backend..."
+          if terraform init \
+            -backend-config="bucket=${BUCKET_NAME}" \
+            -backend-config="key=${ENV}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${BUCKET_NAME}-lock" \
+            -reconfigure 2>/dev/null; then
+            echo "✓ Initialized with S3 backend"
+            echo "backend_type=s3" >> $GITHUB_OUTPUT
           else
-            echo "No S3 backend configured - initializing with local backend"
+            echo "S3 bucket doesn't exist yet - using local backend (will be created by Terraform)"
             terraform init -backend=false
+            echo "backend_type=local" >> $GITHUB_OUTPUT
           fi
         working-directory: infrastructure/terraform
 
