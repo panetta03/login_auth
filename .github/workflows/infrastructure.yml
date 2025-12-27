@@ -1,4 +1,4 @@
-name: Infrastructure
+name: Infrastructure Deployment
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -96,13 +96,22 @@ jobs:
         if: steps.plan.outcome == 'failure'
         run: exit 1
 
+      - name: Check Auto-Apply Setting
+        id: check-auto-apply
+        run: |
+          if [ "${{ vars.TERRAFORM_AUTO_APPLY }}" = "true" ] && [ "${{ github.event_name }}" = "push" ]; then
+            echo "auto_apply=true" >> $GITHUB_OUTPUT
+          else
+            echo "auto_apply=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Terraform Apply
         # Apply runs when:
         # 1. Manually triggered with action='apply'
-        # 2. Auto-apply is enabled via secret and this is a push event
+        # 2. Auto-apply is enabled via repository variable and this is a push event
         if: |
           github.event.inputs.action == 'apply' ||
-          (github.event_name == 'push' && secrets.TERRAFORM_AUTO_APPLY == 'true')
+          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
         run: terraform apply -auto-approve -no-color tfplan
         working-directory: infrastructure/terraform
 
