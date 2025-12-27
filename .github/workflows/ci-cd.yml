@@ -9,8 +9,12 @@ on:
 env:
   AWS_REGION: us-east-2
   ECR_REPOSITORY: auth-service
-  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER || 'auth-service-cluster' }}
-  ECS_SERVICE: ${{ secrets.ECS_SERVICE || 'auth-service' }}
+  # Default to dev-* names (Terraform default environment)
+  # Override via secrets to match your Terraform environment:
+  #   - dev: dev-auth-service-cluster / dev-auth-service
+  #   - prod: prod-auth-service-cluster / prod-auth-service
+  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER || 'dev-auth-service-cluster' }}
+  ECS_SERVICE: ${{ secrets.ECS_SERVICE || 'dev-auth-service' }}
 
 jobs:
   test:

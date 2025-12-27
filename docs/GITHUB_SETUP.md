@@ -18,8 +18,8 @@ These are encrypted and never visible in logs or code:
 | `DB_PASSWORD` | PostgreSQL master password (used by Terraform to create RDS) | `SecurePassword123!` |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (for application tests) | `123456789-abc.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (for application tests) | `GOCSPX-abc123def456` |
-| `ECS_CLUSTER` | ECS cluster name (optional, defaults to `auth-service-cluster`) | `dev-auth-service-cluster` |
-| `ECS_SERVICE` | ECS service name (optional, defaults to `auth-service`) | `dev-auth-service` |
+| `ECS_CLUSTER` | ECS cluster name (optional, defaults to `dev-auth-service-cluster`) | `dev-auth-service-cluster` or `prod-auth-service-cluster` |
+| `ECS_SERVICE` | ECS service name (optional, defaults to `dev-auth-service`) | `dev-auth-service` or `prod-auth-service` |
 
 ### Repository Variables (Optional)
 
@@ -119,7 +119,9 @@ The `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are used by:
 **Uses Secrets**:
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` → Deploy to ECR/ECS
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` → Run integration tests
-- `ECS_CLUSTER` / `ECS_SERVICE` → Optional, but required if using Terraform (names are environment-prefixed)
+- `ECS_CLUSTER` / `ECS_SERVICE` → **Required if using Terraform** - Must match Terraform environment:
+  - If Terraform deployed to `dev`: `dev-auth-service-cluster` / `dev-auth-service`
+  - If Terraform deployed to `prod`: `prod-auth-service-cluster` / `prod-auth-service`
 
 ### Infrastructure Pipeline (`.github/workflows/infrastructure.yml`)
 
