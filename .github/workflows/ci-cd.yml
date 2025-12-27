@@ -199,6 +199,33 @@ jobs:
           cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max
           platforms: linux/amd64
 
+      - name: Verify ECS service exists
+        run: |
+          echo "Verifying ECS service exists (should be created via Terraform)..."
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].status' \
+            --output text 2>/dev/null || echo "NOT_FOUND")
+          
+          if [ "$SERVICE_STATUS" = "ACTIVE" ] || [ "$SERVICE_STATUS" = "DRAINING" ]; then
+            echo "✓ ECS service exists and is $SERVICE_STATUS"
+          else
+            echo "❌ Error: ECS service '${{ env.ECS_SERVICE }}' not found in cluster '${{ env.ECS_CLUSTER }}'"
+            echo ""
+            echo "The ECS service must be created via Terraform first."
+            echo "Please run: cd infrastructure/terraform && terraform apply"
+            echo ""
+            echo "Required infrastructure (managed by Terraform):"
+            echo "  - VPC with public and private subnets"
+            echo "  - ECS cluster"
+            echo "  - ECS service"
+            echo "  - Security groups"
+            echo "  - Load balancer (ALB)"
+            exit 1
+          fi
+
       - name: Update ECS service
         id: update-service
         run: |
@@ -206,6 +233,7 @@ jobs:
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-definition.outputs.task-definition-arn }} \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }} \
             --query 'service.{ServiceName:serviceName,Status:status,DesiredCount:desiredCount,RunningCount:runningCount}' \
