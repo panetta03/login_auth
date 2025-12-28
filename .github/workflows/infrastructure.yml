@@ -172,6 +172,54 @@ jobs:
         working-directory: infrastructure/terraform
         continue-on-error: true
 
+      - name: Handle Stale Terraform Lock
+        # Automatically unlock stale locks from previous failed runs (older than 1 hour)
+        run: |
+          echo "Checking for stale Terraform state locks..."
+          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
+          TABLE_NAME="${BUCKET_NAME}-lock"
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STATE_KEY="${ENV}/terraform.tfstate"
+          LOCK_ID="${BUCKET_NAME}/${STATE_KEY}-md5"
+          
+          # Check if lock exists and get its creation time
+          LOCK_DATA=$(aws dynamodb get-item \
+            --table-name "${TABLE_NAME}" \
+            --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+            --region us-east-2 \
+            --output json 2>/dev/null || echo "{}")
+          
+          if echo "$LOCK_DATA" | grep -q "Item"; then
+            # Extract creation timestamp (Unix epoch in nanoseconds)
+            CREATED_NS=$(echo "$LOCK_DATA" | grep -o '"Created":\[{"N":"[^"]*"}' | grep -o '[0-9]*' | head -1 || echo "0")
+            
+            if [ -n "$CREATED_NS" ] && [ "$CREATED_NS" != "0" ]; then
+              # Convert to seconds and check if older than 1 hour (3600 seconds)
+              CREATED_SEC=$((CREATED_NS / 1000000000))
+              CURRENT_SEC=$(date +%s)
+              AGE_SEC=$((CURRENT_SEC - CREATED_SEC))
+              
+              if [ $AGE_SEC -gt 3600 ]; then
+                echo "⚠️ Found stale lock (age: ${AGE_SEC}s, >1 hour). Attempting to unlock..."
+                echo "Lock ID: ${LOCK_ID}"
+                
+                # Delete the lock item
+                aws dynamodb delete-item \
+                  --table-name "${TABLE_NAME}" \
+                  --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+                  --region us-east-2 || true
+                
+                echo "✓ Stale lock removed (if it existed)"
+              else
+                echo "ℹ️ Lock exists but is recent (age: ${AGE_SEC}s). Will fail if still locked."
+              fi
+            fi
+          else
+            echo "✓ No existing lock found"
+          fi
+        working-directory: infrastructure/terraform
+        continue-on-error: true
+
       - name: Terraform Plan
         id: plan
         # Plan runs when:
@@ -194,7 +242,26 @@ jobs:
 
       - name: Terraform Plan Status
         if: steps.plan.outcome == 'failure'
-        run: exit 1
+        run: |
+          # Check if failure was due to state lock
+          if grep -q "state lock" plan-output.txt 2>/dev/null || grep -q "Error acquiring the state lock" plan-output.txt 2>/dev/null; then
+            echo "❌ Terraform plan failed due to state lock"
+            echo ""
+            echo "**Lock Information:**"
+            grep -A 10 "Lock Info:" plan-output.txt || grep -A 10 "state lock" plan-output.txt || true
+            echo ""
+            echo "**To resolve:**"
+            echo "1. Wait 10 minutes for the lock to expire automatically, OR"
+            echo "2. Manually unlock using: terraform force-unlock <LOCK_ID>"
+            echo "   (Run this in a separate workflow or locally with AWS credentials)"
+            echo ""
+            echo "⚠️ Only unlock if you're certain the previous operation is not running."
+            exit 1
+          else
+            echo "❌ Terraform plan failed (not due to lock)"
+            exit 1
+          fi
+        working-directory: infrastructure/terraform
 
       - name: Display Plan Summary
         if: |
