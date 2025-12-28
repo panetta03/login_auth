@@ -407,7 +407,6 @@ jobs:
         # 1. Manually triggered with action='apply' (requires manual approval via environment protection)
         # 2. Auto-apply is enabled via repository variable and this is a push event
         # Note: For manual apply, GitHub Environment protection rules will require approval
-        environment: terraform-${{ github.event.inputs.environment || 'dev' }}
         if: |
           github.event.inputs.action == 'apply' ||
           (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
