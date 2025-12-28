@@ -44,6 +44,10 @@ resource "aws_api_gateway_method" "proxy" {
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
   authorization = "NONE"
+
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
 }
 
 # API Gateway Integration - Proxy to ALB

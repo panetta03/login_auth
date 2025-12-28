@@ -245,7 +245,13 @@ jobs:
           github.event_name == 'push'
         run: |
           # Try to run plan
-          if terraform plan \
+          if           # Check if DB credentials are provided
+          if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
+            echo "⚠️ Warning: DB_USERNAME or DB_PASSWORD secrets are not set. RDS creation will fail."
+            echo "Please set these secrets in GitHub repository settings."
+          fi
+          
+          terraform plan \
             -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
             -var="db_username=${{ secrets.DB_USERNAME }}" \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
