@@ -377,6 +377,31 @@ jobs:
             echo "auto_apply=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Import Existing Resources (if needed)
+        # Import resources that exist in AWS but not in Terraform state
+        if: |
+          github.event.inputs.action == 'apply' ||
+          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
+        run: |
+          echo "Checking for existing resources to import..."
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
+          
+          # Import Redis if it exists
+          if aws elasticache describe-replication-groups \
+            --replication-group-id "${ENV}-auth-service-redis" \
+            --region us-east-2 >/dev/null 2>&1; then
+            echo "Importing existing Redis replication group..."
+            terraform import \
+              -var-file="environments/${ENV}/terraform.tfvars" \
+              -var="db_username=${{ secrets.DB_USERNAME }}" \
+              -var="db_password=${{ secrets.DB_PASSWORD }}" \
+              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
+              module.redis.aws_elasticache_replication_group.main "${ENV}-auth-service-redis" || echo "Redis already in state or import failed"
+          fi
+        working-directory: infrastructure/terraform
+        continue-on-error: true
+
       - name: Terraform Apply
         # Apply runs when:
         # 1. Manually triggered with action='apply' (requires manual approval via environment protection)
@@ -385,7 +410,16 @@ jobs:
         if: |
           github.event.inputs.action == 'apply' ||
           (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
+        environment: terraform-${{ github.event.inputs.environment || 'dev' }}
         run: |
+          # Check if DB credentials are provided before apply
+          if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
+            echo "❌ Error: DB_USERNAME or DB_PASSWORD secrets are not set."
+            echo "RDS cannot be created without database credentials."
+            echo "Please set these secrets in GitHub repository settings and try again."
+            exit 1
+          fi
+          
           echo "🚀 Applying Terraform plan..."
           terraform apply -auto-approve -no-color tfplan
           echo "✅ Terraform apply completed successfully"
