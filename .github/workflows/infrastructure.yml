@@ -203,7 +203,13 @@ jobs:
             if echo "$LOCK_DATA" | grep -q "Item"; then
               # Extract creation timestamp (Unix epoch in nanoseconds)
               # Terraform stores it as: "Info": {"M": {"Created": {"N": "..."}}}
-              CREATED_NS=$(echo "$LOCK_DATA" | jq -r '.Item.Info.M.Created.N // empty' 2>/dev/null || echo "0")
+              # Try jq first, fallback to grep if jq not available
+              if command -v jq >/dev/null 2>&1; then
+                CREATED_NS=$(echo "$LOCK_DATA" | jq -r '.Item.Info.M.Created.N // empty' 2>/dev/null || echo "0")
+              else
+                # Fallback: extract from JSON using grep (less reliable but works)
+                CREATED_NS=$(echo "$LOCK_DATA" | grep -o '"Created":\[{"N":"[^"]*"}' | grep -o '[0-9]*' | head -1 || echo "0")
+              fi
               
               if [ -n "$CREATED_NS" ] && [ "$CREATED_NS" != "0" ] && [ "$CREATED_NS" != "null" ]; then
                 # Convert to seconds and check if older than 1 hour (3600 seconds)
