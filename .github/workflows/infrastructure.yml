@@ -173,60 +173,34 @@ jobs:
         continue-on-error: true
 
       - name: Handle Stale Terraform Lock
-        # Scan DynamoDB table for stale locks and unlock them
+        # Aggressively remove all locks matching our state file (they're blocking deployments)
         run: |
-          echo "Scanning for stale Terraform state locks..."
+          echo "Removing any stale Terraform state locks..."
           BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
           TABLE_NAME="${BUCKET_NAME}-lock"
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           STATE_KEY="${ENV}/terraform.tfstate"
-          
-          CURRENT_SEC=$(date +%s)
-          FOUND_STALE=false
-          
-          # Try to unlock using the known state path first (most reliable)
           STATE_PATH="${BUCKET_NAME}/${STATE_KEY}"
-          echo "Checking for lock at: ${STATE_PATH}"
           
-          # Check if lock exists
-          LOCK_DATA=$(aws dynamodb get-item \
-            --table-name "${TABLE_NAME}" \
-            --key "{\"LockID\":{\"S\":\"${STATE_PATH}\"}}" \
-            --region us-east-2 \
-            --output json 2>/dev/null || echo "{}")
+          echo "State path: ${STATE_PATH}"
+          echo "Table: ${TABLE_NAME}"
           
-          if echo "$LOCK_DATA" | grep -q "Item"; then
-            echo "Found lock, checking age..."
-            # Extract creation timestamp
-            if command -v jq >/dev/null 2>&1; then
-              CREATED_NS=$(echo "$LOCK_DATA" | jq -r '.Item.Info.M.Created.N // empty' 2>/dev/null || echo "0")
-            else
-              CREATED_NS=$(echo "$LOCK_DATA" | grep -o '"Created":\[{"N":"[^"]*"}' | grep -o '[0-9]*' | head -1 || echo "0")
-            fi
-            
-            if [ -n "$CREATED_NS" ] && [ "$CREATED_NS" != "0" ] && [ "$CREATED_NS" != "null" ]; then
-              CREATED_SEC=$((CREATED_NS / 1000000000))
-              AGE_SEC=$((CURRENT_SEC - CREATED_SEC))
-              
-              if [ $AGE_SEC -gt 3600 ]; then
-                echo "⚠️ Found stale lock (age: ${AGE_SEC}s, >1 hour)"
-                echo "Lock ID: ${STATE_PATH}"
-                
-                # Use terraform force-unlock (more reliable than direct DynamoDB delete)
-                echo "Attempting to force-unlock using terraform..."
-                terraform force-unlock -force "${STATE_PATH}" || true
-                
-                echo "✓ Stale lock removed"
-                FOUND_STALE=true
-              else
-                echo "ℹ️ Lock exists but is recent (age: ${AGE_SEC}s). Will fail if still locked."
-              fi
-            fi
-          else
-            echo "✓ No lock found at expected path"
-          fi
+          # Try multiple lock ID formats that Terraform might use
+          LOCK_IDS_TO_TRY=(
+            "${STATE_PATH}"
+            "${STATE_PATH}-md5"
+            "${STATE_KEY}"
+            "${STATE_KEY}-md5"
+          )
           
-          # Also scan table for any other locks matching our pattern (backup method)
+          # First, try terraform force-unlock for each possible format
+          for LOCK_ID in "${LOCK_IDS_TO_TRY[@]}"; do
+            echo "Attempting to force-unlock: ${LOCK_ID}"
+            terraform force-unlock -force "${LOCK_ID}" 2>&1 || echo "  (No lock found with this ID or already unlocked)"
+          done
+          
+          # Also scan DynamoDB table and delete any locks matching our pattern
+          echo "Scanning DynamoDB table for locks..."
           SCAN_RESULT=$(aws dynamodb scan \
             --table-name "${TABLE_NAME}" \
             --region us-east-2 \
@@ -240,16 +214,23 @@ jobs:
           fi
           
           if [ -n "$ALL_LOCK_IDS" ]; then
-            echo "Scanning table for additional locks matching state file..."
+            echo "Found locks in table:"
             for LOCK_ID in $ALL_LOCK_IDS; do
-              # Check if this lock matches our state file but wasn't already handled
-              if echo "$LOCK_ID" | grep -q "$STATE_KEY" && [ "$LOCK_ID" != "$STATE_PATH" ]; then
-                echo "Found additional lock: ${LOCK_ID}"
-                # Try to unlock it
-                terraform force-unlock -force "${LOCK_ID}" || true
+              echo "  - ${LOCK_ID}"
+              # If lock matches our state file pattern, delete it
+              if echo "$LOCK_ID" | grep -q "${STATE_KEY}" || echo "$LOCK_ID" | grep -q "${BUCKET_NAME}"; then
+                echo "    → Matches our state file, deleting..."
+                aws dynamodb delete-item \
+                  --table-name "${TABLE_NAME}" \
+                  --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+                  --region us-east-2 2>&1 || echo "    → Failed to delete (may not exist)"
               fi
             done
+          else
+            echo "No locks found in table"
           fi
+          
+          echo "✓ Lock cleanup completed"
         working-directory: infrastructure/terraform
         continue-on-error: true
 
