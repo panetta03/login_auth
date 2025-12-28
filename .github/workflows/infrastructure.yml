@@ -180,42 +180,57 @@ jobs:
           TABLE_NAME="${BUCKET_NAME}-lock"
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           STATE_KEY="${ENV}/terraform.tfstate"
-          LOCK_ID="${BUCKET_NAME}/${STATE_KEY}-md5"
           
-          # Check if lock exists and get its creation time
-          LOCK_DATA=$(aws dynamodb get-item \
-            --table-name "${TABLE_NAME}" \
-            --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
-            --region us-east-2 \
-            --output json 2>/dev/null || echo "{}")
+          # Try multiple possible lock ID formats
+          LOCK_IDS=(
+            "${BUCKET_NAME}/${STATE_KEY}-md5"
+            "${STATE_KEY}-md5"
+            "${BUCKET_NAME}/${STATE_KEY}"
+            "${STATE_KEY}"
+          )
           
-          if echo "$LOCK_DATA" | grep -q "Item"; then
-            # Extract creation timestamp (Unix epoch in nanoseconds)
-            CREATED_NS=$(echo "$LOCK_DATA" | grep -o '"Created":\[{"N":"[^"]*"}' | grep -o '[0-9]*' | head -1 || echo "0")
+          CURRENT_SEC=$(date +%s)
+          FOUND_STALE=false
+          
+          for LOCK_ID in "${LOCK_IDS[@]}"; do
+            # Check if lock exists and get its creation time
+            LOCK_DATA=$(aws dynamodb get-item \
+              --table-name "${TABLE_NAME}" \
+              --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+              --region us-east-2 \
+              --output json 2>/dev/null || echo "{}")
             
-            if [ -n "$CREATED_NS" ] && [ "$CREATED_NS" != "0" ]; then
-              # Convert to seconds and check if older than 1 hour (3600 seconds)
-              CREATED_SEC=$((CREATED_NS / 1000000000))
-              CURRENT_SEC=$(date +%s)
-              AGE_SEC=$((CURRENT_SEC - CREATED_SEC))
+            if echo "$LOCK_DATA" | grep -q "Item"; then
+              # Extract creation timestamp (Unix epoch in nanoseconds)
+              # Terraform stores it as: "Info": {"M": {"Created": {"N": "..."}}}
+              CREATED_NS=$(echo "$LOCK_DATA" | jq -r '.Item.Info.M.Created.N // empty' 2>/dev/null || echo "0")
               
-              if [ $AGE_SEC -gt 3600 ]; then
-                echo "⚠️ Found stale lock (age: ${AGE_SEC}s, >1 hour). Attempting to unlock..."
-                echo "Lock ID: ${LOCK_ID}"
+              if [ -n "$CREATED_NS" ] && [ "$CREATED_NS" != "0" ] && [ "$CREATED_NS" != "null" ]; then
+                # Convert to seconds and check if older than 1 hour (3600 seconds)
+                CREATED_SEC=$((CREATED_NS / 1000000000))
+                AGE_SEC=$((CURRENT_SEC - CREATED_SEC))
                 
-                # Delete the lock item
-                aws dynamodb delete-item \
-                  --table-name "${TABLE_NAME}" \
-                  --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
-                  --region us-east-2 || true
-                
-                echo "✓ Stale lock removed (if it existed)"
-              else
-                echo "ℹ️ Lock exists but is recent (age: ${AGE_SEC}s). Will fail if still locked."
+                if [ $AGE_SEC -gt 3600 ]; then
+                  echo "⚠️ Found stale lock (age: ${AGE_SEC}s, >1 hour). Attempting to unlock..."
+                  echo "Lock ID: ${LOCK_ID}"
+                  
+                  # Delete the lock item
+                  aws dynamodb delete-item \
+                    --table-name "${TABLE_NAME}" \
+                    --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+                    --region us-east-2 || true
+                  
+                  echo "✓ Stale lock removed"
+                  FOUND_STALE=true
+                else
+                  echo "ℹ️ Lock exists but is recent (age: ${AGE_SEC}s). Will fail if still locked."
+                fi
               fi
             fi
-          else
-            echo "✓ No existing lock found"
+          done
+          
+          if [ "$FOUND_STALE" = "false" ]; then
+            echo "✓ No stale locks found (or locks are recent)"
           fi
         working-directory: infrastructure/terraform
         continue-on-error: true
