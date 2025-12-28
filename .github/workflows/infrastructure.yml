@@ -410,8 +410,7 @@ jobs:
         if: |
           github.event.inputs.action == 'apply' ||
           (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
-        environment:
-          name: terraform-${{ github.event.inputs.environment || 'dev' }}
+        environment: terraform-${{ github.event.inputs.environment || 'dev' }}
         run: |
           # Check if DB credentials are provided before apply
           if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
