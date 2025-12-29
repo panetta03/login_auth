@@ -234,10 +234,11 @@ jobs:
         id: update-service
         run: |
           echo "Updating ECS service: ${{ env.ECS_SERVICE }} in cluster: ${{ env.ECS_CLUSTER }}"
+          # Force new deployment to pull the latest image (latest tag)
+          # Note: Task definition is managed by Terraform, we just force a new deployment
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
-            --task-definition ${{ steps.task-definition.outputs.task-definition-arn }} \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }} \
             --query 'service.{ServiceName:serviceName,Status:status,DesiredCount:desiredCount,RunningCount:runningCount}' \
