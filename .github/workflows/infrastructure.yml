@@ -160,14 +160,26 @@ jobs:
           TABLE_NAME="${BUCKET_NAME}-lock"
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           
-          # Import resources if they exist in AWS but not in Terraform state
+          # Import state backend resources if they exist in AWS but not in Terraform state
           # Note: This step is optional and will be skipped if resources don't exist or are already in state
           if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
-            echo "Attempting to import existing state backend resources..."
+            echo "Attempting to import existing S3 bucket..."
             terraform import \
               -var-file="environments/${ENV}/terraform.tfvars" \
               -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.state_backend.aws_s3_bucket.terraform_state "${BUCKET_NAME}" 2>/dev/null || true
+              -var="db_username=dummy" \
+              -var="db_password=dummy" \
+              module.state_backend.aws_s3_bucket.terraform_state "${BUCKET_NAME}" 2>/dev/null || echo "S3 bucket already in state or import failed"
+          fi
+          
+          if aws dynamodb describe-table --table-name "${TABLE_NAME}" --region us-east-2 >/dev/null 2>&1; then
+            echo "Attempting to import existing DynamoDB table..."
+            terraform import \
+              -var-file="environments/${ENV}/terraform.tfvars" \
+              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
+              -var="db_username=dummy" \
+              -var="db_password=dummy" \
+              module.state_backend.aws_dynamodb_table.terraform_state_lock "${TABLE_NAME}" 2>/dev/null || echo "DynamoDB table already in state or import failed"
           fi
         working-directory: infrastructure/terraform
         continue-on-error: true
@@ -386,6 +398,29 @@ jobs:
           echo "Checking for existing resources to import..."
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
+          
+          # Import ECS cluster if it exists
+          if aws ecs describe-clusters --clusters "${ENV}-auth-service-cluster" --region us-east-2 --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+            echo "Importing existing ECS cluster..."
+            terraform import \
+              -var-file="environments/${ENV}/terraform.tfvars" \
+              -var="db_username=${{ secrets.DB_USERNAME }}" \
+              -var="db_password=${{ secrets.DB_PASSWORD }}" \
+              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
+              module.ecs.aws_ecs_cluster.main "${ENV}-auth-service-cluster" || echo "ECS cluster already in state or import failed"
+          fi
+          
+          # Import API Gateway stage if it exists
+          REST_API_ID=$(aws apigateway get-rest-apis --region us-east-2 --query "items[?name=='${ENV}-auth-service-api'].id" --output text 2>/dev/null | head -1)
+          if [ -n "${REST_API_ID}" ] && [ "${REST_API_ID}" != "None" ]; then
+            echo "Importing existing API Gateway stage..."
+            terraform import \
+              -var-file="environments/${ENV}/terraform.tfvars" \
+              -var="db_username=${{ secrets.DB_USERNAME }}" \
+              -var="db_password=${{ secrets.DB_PASSWORD }}" \
+              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
+              module.api_gateway.aws_api_gateway_stage.main "${REST_API_ID}/${ENV}" || echo "API Gateway stage already in state or import failed"
+          fi
           
           # Import Redis if it exists
           if aws elasticache describe-replication-groups \

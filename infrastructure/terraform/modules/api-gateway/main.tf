@@ -72,6 +72,10 @@ resource "aws_api_gateway_method_response" "proxy" {
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy.http_method
   status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 # API Gateway Integration Response
@@ -128,6 +132,11 @@ resource "aws_api_gateway_stage" "main" {
   deployment_id = aws_api_gateway_deployment.main.id
   rest_api_id   = aws_api_gateway_rest_api.main.id
   stage_name    = var.environment
+
+  lifecycle {
+    # Stage may already exist from previous deployments
+    ignore_changes = [deployment_id]
+  }
 
   tags = {
     Name        = "${var.environment}-auth-service-api-stage"

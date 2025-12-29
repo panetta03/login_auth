@@ -45,6 +45,13 @@ variable "allowed_security_groups" {
   type = list(string)
 }
 
+variable "auth_token" {
+  description = "Auth token for Redis (required when transit_encryption_enabled is true). Leave empty for new clusters (AWS will generate), provide existing token when modifying existing clusters."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # Subnet Group for ElastiCache
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.environment}-auth-service-redis-subnet-group"
@@ -95,8 +102,17 @@ resource "aws_elasticache_replication_group" "main" {
   security_group_ids         = [aws_security_group.redis.id]
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
+  auth_token                 = var.auth_token
   snapshot_retention_limit   = var.snapshot_retention_limit
   snapshot_window            = "03:00-05:00"
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore auth_token changes to avoid issues when modifying existing clusters
+      # If you need to rotate the token, do it manually via AWS console/CLI first
+      auth_token,
+    ]
+  }
 
   tags = {
     Name        = "${var.environment}-auth-service-redis"
