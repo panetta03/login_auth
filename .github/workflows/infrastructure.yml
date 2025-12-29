@@ -437,6 +437,50 @@ jobs:
         working-directory: infrastructure/terraform
         continue-on-error: true
 
+      - name: Pre-Apply Disable Redis Auto-Failover
+        # AWS requires auto-failover to be disabled BEFORE reducing nodes from 2+ to 1
+        if: |
+          github.event.inputs.action == 'apply' ||
+          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          REDIS_GROUP="${ENV}-auth-service-redis"
+          
+          # Check if Redis exists and has 2+ nodes with auto-failover enabled
+          if aws elasticache describe-replication-groups \
+            --replication-group-id "${REDIS_GROUP}" \
+            --region us-east-2 >/dev/null 2>&1; then
+            CURRENT_NODES=$(aws elasticache describe-replication-groups \
+              --replication-group-id "${REDIS_GROUP}" \
+              --region us-east-2 \
+              --query 'ReplicationGroups[0].MemberClusters | length(@)' \
+              --output text 2>/dev/null || echo "0")
+            AUTO_FAILOVER=$(aws elasticache describe-replication-groups \
+              --replication-group-id "${REDIS_GROUP}" \
+              --region us-east-2 \
+              --query 'ReplicationGroups[0].AutomaticFailover' \
+              --output text 2>/dev/null || echo "disabled")
+            
+            # Read target node count from tfvars
+            TARGET_NODES=$(grep -E "^redis_num_cache_clusters\s*=" "environments/${ENV}/terraform.tfvars" | cut -d'=' -f2 | tr -d ' ' || echo "1")
+            
+            # If reducing from 2+ to 1 node and auto-failover is enabled, disable it first
+            if [ "${CURRENT_NODES}" -ge 2 ] && [ "${TARGET_NODES}" -eq 1 ] && [ "${AUTO_FAILOVER}" = "enabled" ]; then
+              echo "⚠️ Reducing Redis nodes from ${CURRENT_NODES} to ${TARGET_NODES}. Disabling auto-failover first..."
+              aws elasticache modify-replication-group \
+                --replication-group-id "${REDIS_GROUP}" \
+                --no-automatic-failover-enabled \
+                --apply-immediately \
+                --region us-east-2 || echo "Failed to disable auto-failover (may already be disabled or not needed)"
+              echo "Waiting for modification to complete..."
+              aws elasticache wait replication-group-available \
+                --replication-group-id "${REDIS_GROUP}" \
+                --region us-east-2 || echo "Wait completed (may have timed out, continuing anyway)"
+            fi
+          fi
+        working-directory: infrastructure/terraform
+        continue-on-error: true
+
       - name: Terraform Apply
         # Apply runs when:
         # 1. Manually triggered with action='apply' (requires manual approval via environment protection)

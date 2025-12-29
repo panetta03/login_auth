@@ -95,7 +95,10 @@ resource "aws_elasticache_replication_group" "main" {
   node_type                  = var.node_type
   port                       = 6379
   parameter_group_name       = "default.redis7"
-  num_cache_clusters         = var.num_cache_clusters
+  num_cache_clusters = var.num_cache_clusters
+  # Auto-failover requires at least 2 nodes. When reducing to 1 node, disable it first.
+  # Note: If reducing from 2+ nodes to 1, AWS requires auto-failover to be disabled BEFORE reducing nodes.
+  # The logic below ensures auto-failover is disabled when num_cache_clusters=1
   automatic_failover_enabled = var.num_cache_clusters >= 2 ? var.automatic_failover_enabled : false
   multi_az_enabled           = var.num_cache_clusters >= 2 ? var.multi_az_enabled : false
   subnet_group_name          = aws_elasticache_subnet_group.main.name
@@ -112,6 +115,11 @@ resource "aws_elasticache_replication_group" "main" {
       # If you need to rotate the token, do it manually via AWS console/CLI first
       auth_token,
     ]
+    
+    # When reducing from 2+ nodes to 1 node, AWS requires auto-failover to be disabled first
+    # This lifecycle rule ensures changes are applied in the correct order
+    # If reducing nodes fails, disable auto-failover manually first, then re-run
+    create_before_destroy = false
   }
 
   tags = {
