@@ -379,6 +379,26 @@ resource "aws_iam_role" "ecs_task" {
   }
 }
 
+# IAM Policy for ECS Task Role (for Secrets Manager access)
+resource "aws_iam_role_policy" "ecs_task" {
+  name = "${var.environment}-auth-service-ecs-task-policy"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:${var.secrets_manager_secret_name}*"
+      }
+    ]
+  })
+}
+
 # Auto Scaling
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = var.ecs_max_capacity
