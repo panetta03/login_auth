@@ -94,7 +94,7 @@ resource "aws_security_group" "rds" {
 resource "aws_db_instance" "main" {
   identifier             = "${var.environment}-auth-service-db"
   engine                 = "postgres"
-  engine_version         = "15.2"
+  engine_version         = "18.1"
   instance_class         = var.db_instance_class
   allocated_storage      = var.db_allocated_storage
   storage_type           = "gp3"

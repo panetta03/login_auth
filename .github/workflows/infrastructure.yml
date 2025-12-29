@@ -461,8 +461,8 @@ jobs:
               --query 'ReplicationGroups[0].AutomaticFailover' \
               --output text 2>/dev/null || echo "disabled")
             
-            # Read target node count from tfvars
-            TARGET_NODES=$(grep -E "^redis_num_cache_clusters\s*=" "environments/${ENV}/terraform.tfvars" | cut -d'=' -f2 | tr -d ' ' || echo "1")
+            # Read target node count from tfvars (strip comments and whitespace)
+            TARGET_NODES=$(grep -E "^redis_num_cache_clusters\s*=" "environments/${ENV}/terraform.tfvars" | cut -d'=' -f2 | cut -d'#' -f1 | tr -d ' ' || echo "1")
             
             # If reducing from 2+ to 1 node and auto-failover is enabled, disable it first
             if [ "${CURRENT_NODES}" -ge 2 ] && [ "${TARGET_NODES}" -eq 1 ] && [ "${AUTO_FAILOVER}" = "enabled" ]; then
