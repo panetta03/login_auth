@@ -24,8 +24,21 @@ export const googleProvider: OAuthProvider = {
     const nonce = crypto.randomBytes(16).toString('hex');
 
     // Store state with nonce in Redis (TTL: 10 minutes)
+    // Use Promise.race to prevent hanging if Redis is slow
     const stateData = JSON.stringify({ nonce, createdAt: new Date().toISOString() });
-    await redis.setex(`oauth:state:${state}`, 10 * 60, stateData);
+    try {
+      await Promise.race([
+        redis.setex(`oauth:state:${state}`, 10 * 60, stateData),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis operation timeout')), 8000)
+        ),
+      ]);
+    } catch (error) {
+      logger.warn('Failed to store OAuth state in Redis, continuing anyway', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Continue without Redis - state validation will fail on callback, but at least the OAuth flow can start
+    }
 
     const params = new URLSearchParams({
       client_id: secrets.GOOGLE_CLIENT_ID,
