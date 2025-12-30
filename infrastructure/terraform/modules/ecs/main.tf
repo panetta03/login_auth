@@ -62,6 +62,12 @@ variable "ecs_memory" {
   default     = 512
 }
 
+variable "google_redirect_uri" {
+  description = "Google OAuth redirect URI (API Gateway callback URL)"
+  type        = string
+  default     = ""
+}
+
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
   name = "${var.environment}-auth-service-cluster"
@@ -239,6 +245,10 @@ resource "aws_ecs_task_definition" "main" {
         {
           name  = "REDIS_URL"
           value = var.redis_url
+        },
+        {
+          name  = "GOOGLE_REDIRECT_URI"
+          value = var.google_redirect_uri != "" ? var.google_redirect_uri : "http://localhost:3000/api/v1/auth/callback/google"
         }
       ]
 

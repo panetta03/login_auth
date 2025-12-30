@@ -1,6 +1,11 @@
 output "api_gateway_url" {
-  description = "API Gateway endpoint URL"
+  description = "API Gateway endpoint URL (includes environment as stage)"
   value       = module.api_gateway.api_gateway_url
+}
+
+output "oauth_callback_url" {
+  description = "OAuth callback URL for Google OAuth configuration (includes environment)"
+  value       = module.api_gateway.oauth_callback_url
 }
 
 output "ecs_cluster_name" {

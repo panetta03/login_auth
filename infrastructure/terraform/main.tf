@@ -73,6 +73,8 @@ module "redis" {
 }
 
 # ECS Module
+# Note: google_redirect_uri will be set after API Gateway is created
+# This creates a dependency cycle, so we construct it from the API Gateway REST API ID
 module "ecs" {
   source = "./modules/ecs"
 
@@ -89,6 +91,9 @@ module "ecs" {
   ecs_max_capacity            = var.ecs_max_capacity
   ecs_cpu                     = var.ecs_cpu
   ecs_memory                  = var.ecs_memory
+  # Redirect URI follows convention: https://{api-id}.execute-api.{region}.amazonaws.com/{environment}/api/v1/auth/callback/google
+  # This will be updated after API Gateway is created (may require two applies)
+  google_redirect_uri = ""
 }
 
 # API Gateway Module

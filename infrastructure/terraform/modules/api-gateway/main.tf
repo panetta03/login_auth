@@ -51,6 +51,7 @@ resource "aws_api_gateway_method" "proxy" {
 }
 
 # API Gateway Integration - Proxy to ALB
+# HTTP_PROXY with passthrough_behavior = "WHEN_NO_MATCH" automatically passes all query parameters
 resource "aws_api_gateway_integration" "proxy" {
   rest_api_id = aws_api_gateway_rest_api.main.id
   resource_id = aws_api_gateway_resource.proxy.id
@@ -145,8 +146,13 @@ resource "aws_api_gateway_stage" "main" {
 }
 
 output "api_gateway_url" {
-  description = "API Gateway endpoint URL"
+  description = "API Gateway endpoint URL (includes environment as stage)"
   value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}"
+}
+
+output "oauth_callback_url" {
+  description = "OAuth callback URL for Google OAuth configuration (includes environment)"
+  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}/api/v1/auth/callback/google"
 }
 
 data "aws_region" "current" {}
