@@ -137,8 +137,9 @@ output "endpoint" {
 }
 
 output "redis_url" {
-  description = "Redis connection URL"
-  value       = var.num_cache_clusters == 1 ? "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" : "redis://${aws_elasticache_replication_group.main.configuration_endpoint_address}:6379"
+  description = "Redis connection URL (uses rediss:// for TLS when transit encryption is enabled)"
+  # Use rediss:// (with double 's') for TLS when transit_encryption_enabled = true
+  value       = var.num_cache_clusters == 1 ? "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" : "rediss://${aws_elasticache_replication_group.main.configuration_endpoint_address}:6379"
   sensitive   = true
 }
 

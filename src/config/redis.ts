@@ -14,6 +14,15 @@ const redisOptions: RedisOptions = {
   commandTimeout: 10000, // 10 second command timeout (increased from 5s for network latency)
   enableReadyCheck: true,
   keepAlive: 30000, // Keep connection alive
+  // Enable TLS for ElastiCache with transit encryption
+  // ioredis automatically detects rediss:// URLs and enables TLS
+  tls: config.redis.url.startsWith('rediss://')
+    ? {
+        // ElastiCache uses self-signed certificates, so we need to reject unauthorized
+        // In production, you might want to verify the certificate
+        rejectUnauthorized: false, // ElastiCache uses self-signed certs
+      }
+    : undefined,
 };
 
 export const redis = new Redis(config.redis.url, redisOptions);
