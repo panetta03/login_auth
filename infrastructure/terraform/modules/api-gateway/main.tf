@@ -61,6 +61,7 @@ resource "aws_api_gateway_integration" "proxy" {
   type                    = "HTTP_PROXY"
   uri                     = "http://${var.alb_dns_name}/{proxy}"
   passthrough_behavior    = "WHEN_NO_MATCH"
+  timeout_milliseconds    = 29000 # API Gateway max timeout (29 seconds)
 
   request_parameters = {
     "integration.request.path.proxy" = "method.request.path.proxy"

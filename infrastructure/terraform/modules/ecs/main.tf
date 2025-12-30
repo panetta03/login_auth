@@ -179,6 +179,7 @@ resource "aws_lb_target_group" "main" {
     interval            = 30
     path                = "/health"
     matcher             = "200"
+    protocol            = "HTTP"
   }
 
   tags = {
