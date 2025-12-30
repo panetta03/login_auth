@@ -11,8 +11,9 @@ const redisOptions: RedisOptions = {
   maxRetriesPerRequest: 3,
   lazyConnect: config.nodeEnv === 'test', // Lazy connect in test mode
   connectTimeout: 10000, // 10 second connection timeout
-  commandTimeout: 5000, // 5 second command timeout
+  commandTimeout: 10000, // 10 second command timeout (increased from 5s for network latency)
   enableReadyCheck: true,
+  keepAlive: 30000, // Keep connection alive
 };
 
 export const redis = new Redis(config.redis.url, redisOptions);
