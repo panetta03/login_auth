@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  workflow_dispatch:  # Can be triggered manually or by infrastructure workflow
 
 env:
   AWS_REGION: us-east-2
@@ -120,8 +121,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [test, security, build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [check-infrastructure, test, security, build]
+    if: |
+      github.ref == 'refs/heads/main' && 
+      github.event_name == 'push' &&
+      (needs.check-infrastructure.outputs.infrastructure_changed != 'true' || needs.check-infrastructure.outcome == 'success')
     environment:
       name: production
 

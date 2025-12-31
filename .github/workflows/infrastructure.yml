@@ -31,9 +31,13 @@ env:
   TF_VERSION: '1.6.0'
 
 jobs:
-  terraform:
+  terraform-plan:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
+    outputs:
+      plan_artifact_name: ${{ steps.plan-artifact.outputs.name }}
+      environment: ${{ github.event.inputs.environment || 'dev' }}
+      state_bucket_name: ${{ steps.state-bucket.outputs.bucket_name }}
     
     steps:
       - name: Checkout
@@ -51,7 +55,6 @@ jobs:
         run: |
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           REGION="${{ env.AWS_REGION }}"
-          # Use auto-generated name: auth-service-terraform-state-{env}-{region}
           BUCKET_NAME="auth-service-terraform-state-${ENV}-${REGION}"
           echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
           echo "State bucket name: ${BUCKET_NAME}"
@@ -85,12 +88,10 @@ jobs:
               --bucket "${BUCKET_NAME}" \
               --region "${REGION}"
             
-            # Enable versioning
             aws s3api put-bucket-versioning \
               --bucket "${BUCKET_NAME}" \
               --versioning-configuration Status=Enabled
             
-            # Enable encryption
             aws s3api put-bucket-encryption \
               --bucket "${BUCKET_NAME}" \
               --server-side-encryption-configuration '{
@@ -101,7 +102,6 @@ jobs:
                 }]
               }'
             
-            # Block public access
             aws s3api put-public-access-block \
               --bucket "${BUCKET_NAME}" \
               --public-access-block-configuration \
@@ -154,110 +154,13 @@ jobs:
         run: terraform validate -no-color
         working-directory: infrastructure/terraform
 
-      - name: Import existing state backend resources (if created by AWS CLI)
-        run: |
-          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
-          TABLE_NAME="${BUCKET_NAME}-lock"
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          
-          # Import state backend resources if they exist in AWS but not in Terraform state
-          # Note: This step is optional and will be skipped if resources don't exist or are already in state
-          if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
-            echo "Attempting to import existing S3 bucket..."
-            terraform import \
-              -var-file="environments/${ENV}/terraform.tfvars" \
-              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              -var="db_username=dummy" \
-              -var="db_password=dummy" \
-              module.state_backend.aws_s3_bucket.terraform_state "${BUCKET_NAME}" 2>/dev/null || echo "S3 bucket already in state or import failed"
-          fi
-          
-          if aws dynamodb describe-table --table-name "${TABLE_NAME}" --region us-east-2 >/dev/null 2>&1; then
-            echo "Attempting to import existing DynamoDB table..."
-            terraform import \
-              -var-file="environments/${ENV}/terraform.tfvars" \
-              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              -var="db_username=dummy" \
-              -var="db_password=dummy" \
-              module.state_backend.aws_dynamodb_table.terraform_state_lock "${TABLE_NAME}" 2>/dev/null || echo "DynamoDB table already in state or import failed"
-          fi
-        working-directory: infrastructure/terraform
-        continue-on-error: true
-
-      - name: Handle Stale Terraform Lock
-        # Aggressively remove all locks matching our state file (they're blocking deployments)
-        run: |
-          echo "Removing any stale Terraform state locks..."
-          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
-          TABLE_NAME="${BUCKET_NAME}-lock"
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          STATE_KEY="${ENV}/terraform.tfstate"
-          STATE_PATH="${BUCKET_NAME}/${STATE_KEY}"
-          
-          echo "State path: ${STATE_PATH}"
-          echo "Table: ${TABLE_NAME}"
-          
-          # Try multiple lock ID formats that Terraform might use
-          LOCK_IDS_TO_TRY=(
-            "${STATE_PATH}"
-            "${STATE_PATH}-md5"
-            "${STATE_KEY}"
-            "${STATE_KEY}-md5"
-          )
-          
-          # First, try terraform force-unlock for each possible format
-          for LOCK_ID in "${LOCK_IDS_TO_TRY[@]}"; do
-            echo "Attempting to force-unlock: ${LOCK_ID}"
-            terraform force-unlock -force "${LOCK_ID}" 2>&1 || echo "  (No lock found with this ID or already unlocked)"
-          done
-          
-          # Also scan DynamoDB table and delete any locks matching our pattern
-          echo "Scanning DynamoDB table for locks..."
-          SCAN_RESULT=$(aws dynamodb scan \
-            --table-name "${TABLE_NAME}" \
-            --region us-east-2 \
-            --output json 2>/dev/null || echo '{"Items":[]}')
-          
-          # Extract all LockIDs from the scan
-          if command -v jq >/dev/null 2>&1; then
-            ALL_LOCK_IDS=$(echo "$SCAN_RESULT" | jq -r '.Items[]?.LockID.S // empty' 2>/dev/null || echo "")
-          else
-            ALL_LOCK_IDS=$(echo "$SCAN_RESULT" | grep -o '"LockID":\s*{"S":\s*"[^"]*"}' | grep -o '"[^"]*"' | tr -d '"' | grep -v "^LockID$" || echo "")
-          fi
-          
-          if [ -n "$ALL_LOCK_IDS" ]; then
-            echo "Found locks in table:"
-            for LOCK_ID in $ALL_LOCK_IDS; do
-              echo "  - ${LOCK_ID}"
-              # If lock matches our state file pattern, delete it
-              if echo "$LOCK_ID" | grep -q "${STATE_KEY}" || echo "$LOCK_ID" | grep -q "${BUCKET_NAME}"; then
-                echo "    → Matches our state file, deleting..."
-                aws dynamodb delete-item \
-                  --table-name "${TABLE_NAME}" \
-                  --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
-                  --region us-east-2 2>&1 || echo "    → Failed to delete (may not exist)"
-              fi
-            done
-          else
-            echo "No locks found in table"
-          fi
-          
-          echo "✓ Lock cleanup completed"
-        working-directory: infrastructure/terraform
-        continue-on-error: true
-
       - name: Terraform Plan
         id: plan
-        # Plan runs when:
-        # 1. Manually triggered with action='plan' or 'apply' (apply needs plan first)
-        # 2. Push event (for auto-plan or auto-apply)
         if: |
           github.event.inputs.action == 'plan' ||
           github.event.inputs.action == 'apply' ||
           github.event_name == 'push'
         run: |
-          # Try to run plan
-          if           # Check if DB credentials are provided
           if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
             echo "⚠️ Warning: DB_USERNAME or DB_PASSWORD secrets are not set. RDS creation will fail."
             echo "Please set these secrets in GitHub repository settings."
@@ -269,232 +172,97 @@ jobs:
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="terraform_state_bucket_name=${{ steps.state-bucket.outputs.bucket_name }}" \
             -out=tfplan \
-            -no-color 2>&1 | tee plan-output.txt; then
-            echo "✓ Plan completed successfully"
-          else
-            PLAN_EXIT_CODE=$?
-            # Check if failure was due to lock
-            if grep -q "state lock" plan-output.txt || grep -q "Error acquiring the state lock" plan-output.txt; then
-              echo "⚠️ Plan failed due to state lock. Attempting to extract and unlock..."
-              
-              # Extract the Path from error message (this is the DynamoDB LockID key)
-              # Format: "Path:      auth-service-terraform-state-dev-us-east-2/dev/terraform.tfstate"
-              LOCK_PATH=$(grep "Path:" plan-output.txt | head -1 | sed 's/.*Path:[[:space:]]*//' | tr -d ' ' || echo "")
-              
-              # Also try to extract the UUID lock ID (alternative format)
-              LOCK_UUID=$(grep -o "ID:[[:space:]]*[a-f0-9-]*" plan-output.txt | head -1 | cut -d: -f2 | tr -d ' ' || echo "")
-              
-              if [ -n "$LOCK_PATH" ] && [ "$LOCK_PATH" != "" ]; then
-                echo "Attempting to force-unlock using path: ${LOCK_PATH}"
-                terraform force-unlock -force "${LOCK_PATH}" || true
-              elif [ -n "$LOCK_UUID" ] && [ "$LOCK_UUID" != "" ]; then
-                echo "Attempting to force-unlock using UUID: ${LOCK_UUID}"
-                terraform force-unlock -force "${LOCK_UUID}" || true
-              else
-                echo "Could not extract lock ID from error. Trying to unlock using state path..."
-                # Fallback: use the state key we know
-                ENV="${{ github.event.inputs.environment || 'dev' }}"
-                STATE_PATH="auth-service-terraform-state-dev-us-east-2/${ENV}/terraform.tfstate"
-                terraform force-unlock -force "${STATE_PATH}" || true
-              fi
-              
-              echo "Retrying plan after unlock..."
-              
-              # Retry plan
-              terraform plan \
-                -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
-                -var="db_username=${{ secrets.DB_USERNAME }}" \
-                -var="db_password=${{ secrets.DB_PASSWORD }}" \
-                -var="terraform_state_bucket_name=${{ steps.state-bucket.outputs.bucket_name }}" \
-                -out=tfplan \
-                -no-color | tee plan-output.txt
-            else
-              # Plan failed for other reasons
-              exit $PLAN_EXIT_CODE
-            fi
-          fi
+            -no-color 2>&1 | tee plan-output.txt
         working-directory: infrastructure/terraform
         continue-on-error: true
 
       - name: Terraform Plan Status
         if: steps.plan.outcome == 'failure'
         run: |
-          # Check if failure was due to state lock
-          if grep -q "state lock" plan-output.txt 2>/dev/null || grep -q "Error acquiring the state lock" plan-output.txt 2>/dev/null; then
-            echo "❌ Terraform plan failed due to state lock"
-            echo ""
-            echo "**Lock Information:**"
-            grep -A 10 "Lock Info:" plan-output.txt || grep -A 10 "state lock" plan-output.txt || true
-            echo ""
-            echo "**To resolve:**"
-            echo "1. Wait 10 minutes for the lock to expire automatically, OR"
-            echo "2. Manually unlock using: terraform force-unlock <LOCK_ID>"
-            echo "   (Run this in a separate workflow or locally with AWS credentials)"
-            echo ""
-            echo "⚠️ Only unlock if you're certain the previous operation is not running."
-            exit 1
-          else
-            echo "❌ Terraform plan failed (not due to lock)"
-            exit 1
-          fi
+          echo "❌ Terraform plan failed"
+          exit 1
         working-directory: infrastructure/terraform
 
       - name: Display Plan Summary
-        if: |
-          steps.plan.outcome == 'success' &&
-          (github.event.inputs.action == 'apply' || github.event.inputs.action == 'plan')
+        if: steps.plan.outcome == 'success'
         run: |
           echo "## 📋 Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** \`${{ github.event.inputs.environment || 'dev' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Action:** \`${{ github.event.inputs.action || github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Extract summary line (e.g., "Plan: X to add, Y to change, Z to destroy")
           if grep -q "Plan:" plan-output.txt; then
             echo "### 📊 Resource Changes:" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             grep "Plan:" plan-output.txt | head -1 >> $GITHUB_STEP_SUMMARY || true
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          
           echo "### Full Plan Output:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```terraform' >> $GITHUB_STEP_SUMMARY
           cat plan-output.txt >> $GITHUB_STEP_SUMMARY || echo "Plan output not available" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ github.event.inputs.action }}" = "apply" ]; then
-            echo "**⚠️ IMPORTANT: Review the plan above carefully before approving the apply step.**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The apply step will require manual approval via GitHub Environment protection rules." >> $GITHUB_STEP_SUMMARY
-          fi
         working-directory: infrastructure/terraform
 
-      - name: Upload Plan Output
+      - name: Upload Plan Artifact
+        id: plan-artifact
         if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.event.inputs.environment || 'dev' }}-${{ github.run_number }}
-          path: infrastructure/terraform/plan-output.txt
-          retention-days: 7
+          path: infrastructure/terraform/tfplan
+          retention-days: 1
 
-      - name: Check Auto-Apply Setting
-        id: check-auto-apply
-        run: |
-          if [ "${{ vars.TERRAFORM_AUTO_APPLY }}" = "true" ] && [ "${{ github.event_name }}" = "push" ]; then
-            echo "auto_apply=true" >> $GITHUB_OUTPUT
-          else
-            echo "auto_apply=false" >> $GITHUB_OUTPUT
-          fi
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    environment: 
+      name: ${{ needs.terraform-plan.outputs.environment }}-apply
+      # Manual approval required via GitHub Environment protection rules
+    if: |
+      (github.event.inputs.action == 'apply' || github.event_name == 'push') &&
+      needs.terraform-plan.outcome == 'success'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Import Existing Resources (if needed)
-        # Import resources that exist in AWS but not in Terraform state
-        if: |
-          github.event.inputs.action == 'apply' ||
-          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.terraform-plan.outputs.plan_artifact_name }}
+          path: infrastructure/terraform/
+
+      - name: Terraform Init
         run: |
-          echo "Checking for existing resources to import..."
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          BUCKET_NAME="${{ steps.state-bucket.outputs.bucket_name }}"
+          BUCKET_NAME="${{ needs.terraform-plan.outputs.state_bucket_name }}"
+          ENV="${{ needs.terraform-plan.outputs.environment }}"
           
-          # Import ECS cluster if it exists
-          if aws ecs describe-clusters --clusters "${ENV}-auth-service-cluster" --region us-east-2 --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
-            echo "Importing existing ECS cluster..."
-            terraform import \
-              -var-file="environments/${ENV}/terraform.tfvars" \
-              -var="db_username=${{ secrets.DB_USERNAME }}" \
-              -var="db_password=${{ secrets.DB_PASSWORD }}" \
-              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.ecs.aws_ecs_cluster.main "${ENV}-auth-service-cluster" || echo "ECS cluster already in state or import failed"
-          fi
-          
-          # Import API Gateway stage if it exists
-          REST_API_ID=$(aws apigateway get-rest-apis --region us-east-2 --query "items[?name=='${ENV}-auth-service-api'].id" --output text 2>/dev/null | head -1)
-          if [ -n "${REST_API_ID}" ] && [ "${REST_API_ID}" != "None" ]; then
-            echo "Importing existing API Gateway stage..."
-            terraform import \
-              -var-file="environments/${ENV}/terraform.tfvars" \
-              -var="db_username=${{ secrets.DB_USERNAME }}" \
-              -var="db_password=${{ secrets.DB_PASSWORD }}" \
-              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.api_gateway.aws_api_gateway_stage.main "${REST_API_ID}/${ENV}" || echo "API Gateway stage already in state or import failed"
-          fi
-          
-          # Import Redis if it exists
-          if aws elasticache describe-replication-groups \
-            --replication-group-id "${ENV}-auth-service-redis" \
-            --region us-east-2 >/dev/null 2>&1; then
-            echo "Importing existing Redis replication group..."
-            terraform import \
-              -var-file="environments/${ENV}/terraform.tfvars" \
-              -var="db_username=${{ secrets.DB_USERNAME }}" \
-              -var="db_password=${{ secrets.DB_PASSWORD }}" \
-              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.redis.aws_elasticache_replication_group.main "${ENV}-auth-service-redis" || echo "Redis already in state or import failed"
-          fi
+          terraform init \
+            -backend-config="bucket=${BUCKET_NAME}" \
+            -backend-config="key=${ENV}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${BUCKET_NAME}-lock" \
+            -reconfigure
         working-directory: infrastructure/terraform
-        continue-on-error: true
-
-      - name: Pre-Apply Disable Redis Auto-Failover
-        # AWS requires auto-failover to be disabled BEFORE reducing nodes from 2+ to 1
-        if: |
-          github.event.inputs.action == 'apply' ||
-          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
-        run: |
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          REDIS_GROUP="${ENV}-auth-service-redis"
-          
-          # Check if Redis exists and has 2+ nodes with auto-failover enabled
-          if aws elasticache describe-replication-groups \
-            --replication-group-id "${REDIS_GROUP}" \
-            --region us-east-2 >/dev/null 2>&1; then
-            CURRENT_NODES=$(aws elasticache describe-replication-groups \
-              --replication-group-id "${REDIS_GROUP}" \
-              --region us-east-2 \
-              --query 'ReplicationGroups[0].MemberClusters | length(@)' \
-              --output text 2>/dev/null || echo "0")
-            AUTO_FAILOVER=$(aws elasticache describe-replication-groups \
-              --replication-group-id "${REDIS_GROUP}" \
-              --region us-east-2 \
-              --query 'ReplicationGroups[0].AutomaticFailover' \
-              --output text 2>/dev/null || echo "disabled")
-            
-            # Read target node count from tfvars (strip comments and whitespace)
-            TARGET_NODES=$(grep -E "^redis_num_cache_clusters\s*=" "environments/${ENV}/terraform.tfvars" | cut -d'=' -f2 | cut -d'#' -f1 | tr -d ' ' || echo "1")
-            
-            # If reducing from 2+ to 1 node and auto-failover is enabled, disable it first
-            if [ "${CURRENT_NODES}" -ge 2 ] && [ "${TARGET_NODES}" -eq 1 ] && [ "${AUTO_FAILOVER}" = "enabled" ]; then
-              echo "⚠️ Reducing Redis nodes from ${CURRENT_NODES} to ${TARGET_NODES}. Disabling auto-failover first..."
-              aws elasticache modify-replication-group \
-                --replication-group-id "${REDIS_GROUP}" \
-                --no-automatic-failover-enabled \
-                --apply-immediately \
-                --region us-east-2 || echo "Failed to disable auto-failover (may already be disabled or not needed)"
-              echo "Waiting for modification to complete..."
-              aws elasticache wait replication-group-available \
-                --replication-group-id "${REDIS_GROUP}" \
-                --region us-east-2 || echo "Wait completed (may have timed out, continuing anyway)"
-            fi
-          fi
-        working-directory: infrastructure/terraform
-        continue-on-error: true
 
       - name: Terraform Apply
-        # Apply runs when:
-        # 1. Manually triggered with action='apply' (requires manual approval via environment protection)
-        # 2. Auto-apply is enabled via repository variable and this is a push event
-        # Note: For manual apply, GitHub Environment protection rules will require approval
-        if: |
-          github.event.inputs.action == 'apply' ||
-          (github.event_name == 'push' && steps.check-auto-apply.outputs.auto_apply == 'true')
         run: |
-          # Check if DB credentials are provided before apply
           if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
             echo "❌ Error: DB_USERNAME or DB_PASSWORD secrets are not set."
-            echo "RDS cannot be created without database credentials."
-            echo "Please set these secrets in GitHub repository settings and try again."
             exit 1
           fi
           
@@ -503,43 +271,23 @@ jobs:
           echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
-        run: |
-          terraform destroy -auto-approve -no-color \
-            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
-            -var="db_username=${{ secrets.DB_USERNAME }}" \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -var="terraform_state_bucket_name=${{ steps.state-bucket.outputs.bucket_name }}"
-        working-directory: infrastructure/terraform
-
-      - name: Comment PR
-        if: github.event_name == 'pull_request'
+  trigger-cicd:
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: |
+      needs.terraform-apply.outcome == 'success' &&
+      github.event_name == 'push'
+    
+    steps:
+      - name: Trigger CI/CD Workflow
         uses: actions/github-script@v7
-        env:
-          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-
-            <details><summary>Show Plan</summary>
-
-            \`\`\`
-            ${process.env.PLAN}
-            \`\`\`
-
-            </details>
-
-            *Pusher: @${{ github.actor }}, Action: ${{ github.event_name }}*`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: output
-            })
-
+              workflow_id: 'ci-cd.yml',
+              ref: context.ref
+            });
+            console.log('CI/CD workflow triggered successfully');
