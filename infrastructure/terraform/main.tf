@@ -90,8 +90,11 @@ resource "aws_api_gateway_rest_api" "main" {
 }
 
 # Data source to get the root resource ID (needed for API Gateway resources)
-data "aws_api_gateway_rest_api" "main" {
-  name = aws_api_gateway_rest_api.main.name
+# The root resource is automatically created with the REST API and has path "/"
+# We need to query it using the REST API ID
+data "aws_api_gateway_resource" "root" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  path        = "/"
 }
 
 # Local value for constructing redirect URI from API Gateway REST API ID
@@ -129,5 +132,5 @@ module "api_gateway" {
   ecs_service_arn  = module.ecs.service_arn
   alb_dns_name     = module.ecs.alb_dns_name
   rest_api_id      = aws_api_gateway_rest_api.main.id
-  root_resource_id = data.aws_api_gateway_rest_api.main.root_resource_id
+  root_resource_id = data.aws_api_gateway_resource.root.id
 }
