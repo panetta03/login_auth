@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
     outputs:
-      plan_artifact_name: ${{ steps.plan-artifact.outputs.name }}
+      plan_artifact_name: ${{ steps.plan-artifact-name.outputs.name }}
       environment: ${{ github.event.inputs.environment || 'dev' }}
       state_bucket_name: ${{ steps.state-bucket.outputs.bucket_name }}
     
@@ -240,12 +240,21 @@ jobs:
           fi
         working-directory: infrastructure/terraform
 
+      - name: Set Plan Artifact Name
+        id: plan-artifact-name
+        if: steps.plan.outcome == 'success'
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          ARTIFACT_NAME="terraform-plan-${ENV}-${{ github.run_number }}"
+          echo "name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "Plan artifact name: ${ARTIFACT_NAME}"
+
       - name: Upload Plan Artifact
         id: plan-artifact
         if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan-${{ github.event.inputs.environment || 'dev' }}-${{ github.run_number }}
+          name: ${{ steps.plan-artifact-name.outputs.name }}
           path: infrastructure/terraform/tfplan
           retention-days: 1
 
