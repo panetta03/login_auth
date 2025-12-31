@@ -20,12 +20,16 @@ on:
       - 'docs/**'
       - 'README.md'
       - '.github/workflows/ci-cd.yml'
-  workflow_dispatch:  # Can be triggered manually
-  workflow_run:
-    workflows: ["Infrastructure Deployment", "Promote Dev to Prod"]
-    types:
-      - completed
-    branches: [main]
+  workflow_dispatch:  # Can be triggered manually or by Infrastructure workflow
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
 
 env:
   AWS_REGION: us-east-2
@@ -146,12 +150,12 @@ jobs:
       github.ref == 'refs/heads/main' && 
       (
         github.event_name == 'workflow_dispatch' || 
-        github.event_name == 'workflow_run' ||
         (github.event_name == 'push')
       )
     environment:
-      name: prod
-      # Same environment as infrastructure - can add protection rules if needed
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      # Defaults to dev, can be overridden via workflow_dispatch input
+      # When triggered by Infrastructure workflow, environment is passed via inputs
 
     steps:
       - name: Checkout code
