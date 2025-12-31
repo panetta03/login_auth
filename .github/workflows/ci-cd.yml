@@ -469,20 +469,27 @@ jobs:
               -var="terraform_state_bucket_name=${BUCKET_NAME}" \
               aws_api_gateway_rest_api.main "${REST_API_ID}" 2>&1 || echo "REST API already in state or import failed (this is OK if already managed)"
             
-            # Check if stage exists before trying to import
-            STAGE_EXISTS=$(aws apigateway get-stage --rest-api-id "${REST_API_ID}" --stage-name "${ENV}" --region us-east-2 2>/dev/null && echo "yes" || echo "no")
-            if [ "${STAGE_EXISTS}" = "yes" ]; then
-              echo "Importing existing API Gateway stage..."
-              STAGE_ID="${REST_API_ID}/${ENV}"
-              echo "Importing stage with ID: ${STAGE_ID}"
-              terraform import \
-                -var-file="environments/${ENV}/terraform.tfvars" \
-                -var="db_username=${{ secrets.DB_USERNAME }}" \
-                -var="db_password=${{ secrets.DB_PASSWORD }}" \
-                -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-                module.api_gateway.aws_api_gateway_stage.main "${STAGE_ID}" 2>&1 || echo "API Gateway stage already in state or import failed (this is OK if already managed)"
-            else
+            # Try to import the stage - it may or may not exist
+            # We'll attempt import and handle both cases gracefully
+            STAGE_ID="${REST_API_ID}/${ENV}"
+            echo "Attempting to import API Gateway stage with ID: ${STAGE_ID}"
+            IMPORT_OUTPUT=$(terraform import \
+              -var-file="environments/${ENV}/terraform.tfvars" \
+              -var="db_username=${{ secrets.DB_USERNAME }}" \
+              -var="db_password=${{ secrets.DB_PASSWORD }}" \
+              -var="terraform_state_bucket_name=${BUCKET_NAME}" \
+              module.api_gateway.aws_api_gateway_stage.main "${STAGE_ID}" 2>&1)
+            IMPORT_EXIT_CODE=$?
+            
+            if [ ${IMPORT_EXIT_CODE} -eq 0 ]; then
+              echo "✓ Successfully imported API Gateway stage"
+            elif echo "${IMPORT_OUTPUT}" | grep -q "Resource already managed by Terraform"; then
+              echo "✓ API Gateway stage already in state"
+            elif echo "${IMPORT_OUTPUT}" | grep -q "Cannot import non-existent remote object"; then
               echo "API Gateway stage '${ENV}' does not exist yet, will be created by Terraform"
+            else
+              echo "API Gateway stage import result: ${IMPORT_OUTPUT}"
+              echo "Will attempt to create stage if it doesn't exist"
             fi
           else
             echo "No existing REST API found for ${ENV}-auth-service-api, skipping imports"
