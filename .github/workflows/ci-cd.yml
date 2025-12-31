@@ -11,6 +11,7 @@ on:
       - 'infrastructure/**'
       - '.github/workflows/infrastructure.yml'
       - '.github/workflows/promote-to-prod.yml'
+      - '.github/workflows/ci-cd.yml'
   workflow_dispatch:  # Can be triggered manually or by Infrastructure workflow
     inputs:
       environment:
