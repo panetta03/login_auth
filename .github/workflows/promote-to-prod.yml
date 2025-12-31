@@ -11,7 +11,7 @@ env:
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
-    environment: prod
+    # No environment needed for plan - only apply needs protection
     outputs:
       plan_artifact_name: ${{ steps.plan-artifact-name.outputs.name }}
       environment: prod
@@ -244,7 +244,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform-plan
     environment: 
-      name: prod-apply
+      name: prod
+      # Manual approval required via GitHub Environment protection rules
+      # Same environment name as plan, but protection rules only gate this apply job
       # Manual approval required via GitHub Environment protection rules
     if: needs.terraform-plan.outcome == 'success'
     

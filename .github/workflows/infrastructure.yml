@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     # Push events always deploy to dev
     # workflow_dispatch can specify environment via input
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    # No environment needed for plan - only apply needs protection
     outputs:
       plan_artifact_name: ${{ steps.plan-artifact-name.outputs.name }}
       environment: ${{ github.event.inputs.environment || 'dev' }}
@@ -269,9 +269,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform-plan
     environment: 
-      name: ${{ needs.terraform-plan.outputs.environment }}-apply
+      name: ${{ needs.terraform-plan.outputs.environment }}
       # Manual approval required via GitHub Environment protection rules
       # This job will WAIT for approval before running (not skip)
+      # Same environment as plan, but protection rules only gate this apply job
     if: |
       needs.terraform-plan.outcome == 'success' &&
       (github.event.inputs.action == 'apply' || github.event_name == 'push')
