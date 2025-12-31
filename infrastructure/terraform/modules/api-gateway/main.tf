@@ -21,14 +21,10 @@ variable "rest_api_id" {
   description = "The REST API ID (created in root module to break circular dependency)"
 }
 
-variable "environment" {
-  type        = string
-  description = "Environment name (used to look up REST API by name)"
-}
-
 # Use the REST API created in root module (passed as variable)
 # This breaks the circular dependency: REST API -> ECS -> API Gateway integration
 # We use a data source to get the root_resource_id by looking up the REST API by name
+# The environment variable is already declared above (line 3)
 data "aws_api_gateway_rest_api" "main" {
   name = "${var.environment}-auth-service-api"
 }

@@ -5,6 +5,8 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+    # Only trigger on push if infrastructure files are NOT changed
+    # This prevents duplicate runs when infrastructure workflow triggers CI/CD
     paths-ignore:
       - 'infrastructure/**'
       - '.github/workflows/infrastructure.yml'
