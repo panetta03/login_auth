@@ -21,17 +21,17 @@ variable "rest_api_id" {
   description = "The REST API ID (created in root module to break circular dependency)"
 }
 
-# Use the REST API created in root module (passed as variable)
-# This breaks the circular dependency: REST API -> ECS -> API Gateway integration
-# We use a data source to get the root_resource_id by looking up the REST API by ID
-data "aws_api_gateway_rest_api" "main" {
-  rest_api_id = var.rest_api_id
+variable "root_resource_id" {
+  type        = string
+  description = "The root resource ID of the REST API (obtained from data source in root module)"
 }
+
+# No data source needed - root_resource_id is passed as variable from root module
 
 # API Gateway Resource - Proxy
 resource "aws_api_gateway_resource" "proxy" {
   rest_api_id = var.rest_api_id
-  parent_id   = data.aws_api_gateway_rest_api.main.root_resource_id
+  parent_id   = var.root_resource_id
   path_part   = "{proxy+}"
 }
 

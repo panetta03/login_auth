@@ -89,6 +89,11 @@ resource "aws_api_gateway_rest_api" "main" {
   }
 }
 
+# Data source to get the root resource ID (needed for API Gateway resources)
+data "aws_api_gateway_rest_api" "main" {
+  name = "${var.environment}-auth-service-api"
+}
+
 # Local value for constructing redirect URI from API Gateway REST API ID
 locals {
   google_redirect_uri = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}/api/v1/auth/callback/google"
