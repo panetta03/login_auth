@@ -443,12 +443,18 @@ jobs:
           script: |
             console.log('🚀 Triggering CI/CD workflow...');
             
-            // Trigger the CI/CD workflow via workflow_dispatch
+            // Get the environment from the infrastructure workflow
+            const environment = '${{ needs.terraform-plan.outputs.environment }}';
+            
+            // Trigger the CI/CD workflow via workflow_dispatch with environment input
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'ci-cd.yml',
-              ref: context.ref
+              ref: context.ref,
+              inputs: {
+                environment: environment
+              }
             });
             
             console.log('✅ CI/CD workflow triggered successfully');

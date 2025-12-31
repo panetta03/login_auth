@@ -23,10 +23,9 @@ variable "rest_api_id" {
 
 # Use the REST API created in root module (passed as variable)
 # This breaks the circular dependency: REST API -> ECS -> API Gateway integration
-# We use a data source to get the root_resource_id by looking up the REST API by name
-# The environment variable is already declared above (line 3)
+# We use a data source to get the root_resource_id by looking up the REST API by ID
 data "aws_api_gateway_rest_api" "main" {
-  name = "${var.environment}-auth-service-api"
+  rest_api_id = var.rest_api_id
 }
 
 # API Gateway Resource - Proxy

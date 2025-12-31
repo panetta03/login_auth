@@ -5,11 +5,21 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
-    # Only trigger if infrastructure files are NOT changed
-    paths-ignore:
-      - 'infrastructure/**'
-      - '.github/workflows/infrastructure.yml'
-      - '.github/workflows/promote-to-prod.yml'
+    # Only trigger on push if infrastructure files are NOT changed
+    # Use paths to explicitly list what SHOULD trigger (more reliable than paths-ignore)
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'jest.config.js'
+      - '.eslintrc.js'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/ci-cd.yml'
   workflow_dispatch:  # Can be triggered manually
   workflow_run:
     workflows: ["Infrastructure Deployment", "Promote Dev to Prod"]
