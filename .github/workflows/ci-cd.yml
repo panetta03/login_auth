@@ -5,29 +5,17 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
-    # Only trigger on push if infrastructure files are NOT changed
-    # Use paths to explicitly list what SHOULD trigger (more reliable than paths-ignore)
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'jest.config.js'
-      - '.eslintrc.js'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'docs/**'
-      - 'README.md'
-      - '.github/workflows/ci-cd.yml'
+    # Only trigger if infrastructure files are NOT changed
+    paths-ignore:
+      - 'infrastructure/**'
+      - '.github/workflows/infrastructure.yml'
+      - '.github/workflows/promote-to-prod.yml'
   workflow_dispatch:  # Can be triggered manually
   workflow_run:
     workflows: ["Infrastructure Deployment", "Promote Dev to Prod"]
     types:
       - completed
     branches: [main]
-    # Only trigger when workflow completes successfully AND apply job ran
-    # We'll check in the deploy job that terraform-apply actually succeeded
 
 env:
   AWS_REGION: us-east-2
@@ -140,9 +128,9 @@ jobs:
       - name: Build
         run: npm run build
 
-  check-infrastructure-workflow:
+  check-infrastructure-apply:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_run' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_run'
     outputs:
       apply_succeeded: ${{ steps.check.outputs.apply_succeeded }}
     steps:
@@ -167,7 +155,7 @@ jobs:
             const applyJob = jobs.data.jobs.find(job => job.name === 'terraform-apply');
             
             if (!applyJob) {
-              console.log('terraform-apply job not found - workflow may have been skipped');
+              console.log('terraform-apply job not found - skipping CI/CD');
               core.setOutput('apply_succeeded', 'false');
               return;
             }
@@ -185,15 +173,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [check-infrastructure-workflow, test, security, build]
+    needs: [check-infrastructure-apply, test, security, build]
     if: |
       github.ref == 'refs/heads/main' && 
       (
         github.event_name == 'workflow_dispatch' || 
         (github.event_name == 'workflow_run' && 
          github.event.workflow_run.conclusion == 'success' && 
-         github.event.workflow_run.event == 'push' &&
-         (needs.check-infrastructure-workflow.outputs.apply_succeeded == 'true' || needs.check-infrastructure-workflow.result == 'skipped')) ||
+         needs.check-infrastructure-apply.outputs.apply_succeeded == 'true') ||
         (github.event_name == 'push')
       )
     environment:
@@ -236,13 +223,11 @@ jobs:
 
       - name: Create ECS service-linked role if it doesn't exist
         run: |
-          # Check if the ECS service-linked role exists
           echo "Checking for ECS service-linked role..."
           if aws iam get-role --role-name AWSServiceRoleForECS 2>/dev/null; then
             echo "✓ ECS service-linked role already exists"
           else
             echo "Creating ECS service-linked role..."
-            # Create the service-linked role (region is not needed for IAM operations)
             aws iam create-service-linked-role \
               --aws-service-name ecs.amazonaws.com || \
             echo "Note: Service-linked role creation may have failed (it might already exist or require manual creation)"
@@ -376,4 +361,3 @@ jobs:
           # else
           #   echo "API_URL secret not set, skipping smoke tests"
           # fi
-

@@ -271,9 +271,10 @@ jobs:
     environment: 
       name: ${{ needs.terraform-plan.outputs.environment }}-apply
       # Manual approval required via GitHub Environment protection rules
+      # This job will WAIT for approval before running (not skip)
     if: |
-      (github.event.inputs.action == 'apply' || github.event_name == 'push') &&
-      needs.terraform-plan.outcome == 'success'
+      needs.terraform-plan.outcome == 'success' &&
+      (github.event.inputs.action == 'apply' || github.event_name == 'push')
     
     steps:
       - name: Checkout
