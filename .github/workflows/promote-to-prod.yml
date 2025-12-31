@@ -248,7 +248,7 @@ jobs:
       # Manual approval required via GitHub Environment protection rules
       # Same environment name as plan, but protection rules only gate this apply job
       # Manual approval required via GitHub Environment protection rules
-    if: needs.terraform-plan.outcome == 'success'
+    if: needs.terraform-plan.result == 'success'
     
     steps:
       - name: Checkout
