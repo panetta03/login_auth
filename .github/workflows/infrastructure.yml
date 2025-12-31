@@ -403,5 +403,30 @@ jobs:
           echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
-  # Note: CI/CD is automatically triggered via workflow_run event when this workflow completes successfully
-  # No explicit trigger step needed - the workflow_run trigger in CI/CD workflow handles this
+      - name: CI/CD Trigger Notification
+        if: success()
+        run: |
+          echo "## 🚀 CI/CD Workflow Trigger" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Infrastructure deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The **CI/CD workflow** will be automatically triggered via \`workflow_run\` event." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "- CI/CD will build and deploy the application to ECS" >> $GITHUB_STEP_SUMMARY
+          echo "- Monitor the CI/CD workflow in the Actions tab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** CI/CD will only run if this apply job succeeded." >> $GITHUB_STEP_SUMMARY
+
+      - name: CI/CD Trigger Notification (Failure)
+        if: failure()
+        run: |
+          echo "## ⚠️ CI/CD Workflow Will Not Trigger" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "❌ **Infrastructure deployment failed**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The CI/CD workflow will **not** be triggered because the terraform-apply job failed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action Required:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Fix the infrastructure deployment errors above" >> $GITHUB_STEP_SUMMARY
+          echo "- Re-run this workflow after fixing the issues" >> $GITHUB_STEP_SUMMARY
