@@ -90,8 +90,9 @@ resource "aws_api_gateway_rest_api" "main" {
 }
 
 # Data source to get the root resource ID (needed for API Gateway resources)
+# Use id instead of name to avoid multiple matches
 data "aws_api_gateway_rest_api" "main" {
-  name = "${var.environment}-auth-service-api"
+  id = aws_api_gateway_rest_api.main.id
 }
 
 # Local value for constructing redirect URI from API Gateway REST API ID
