@@ -16,31 +16,27 @@ variable "alb_dns_name" {
   type = string
 }
 
-# API Gateway REST API
-resource "aws_api_gateway_rest_api" "main" {
-  name        = "${var.environment}-auth-service-api"
-  description = "Auth Service REST API"
+variable "rest_api_id" {
+  type        = string
+  description = "The REST API ID (created in root module to break circular dependency)"
+}
 
-  endpoint_configuration {
-    types = ["REGIONAL"]
-  }
-
-  tags = {
-    Name        = "${var.environment}-auth-service-api"
-    Environment = var.environment
-  }
+# Use the REST API created in root module (passed as variable)
+# This breaks the circular dependency: REST API -> ECS -> API Gateway integration
+data "aws_api_gateway_rest_api" "main" {
+  id = var.rest_api_id
 }
 
 # API Gateway Resource - Proxy
 resource "aws_api_gateway_resource" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  rest_api_id = var.rest_api_id
+  parent_id   = data.aws_api_gateway_rest_api.main.root_resource_id
   path_part   = "{proxy+}"
 }
 
 # API Gateway Method - Proxy
 resource "aws_api_gateway_method" "proxy" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
+  rest_api_id   = var.rest_api_id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
   authorization = "NONE"
@@ -53,7 +49,7 @@ resource "aws_api_gateway_method" "proxy" {
 # API Gateway Integration - Proxy to ALB
 # HTTP_PROXY with passthrough_behavior = "WHEN_NO_MATCH" automatically passes all query parameters
 resource "aws_api_gateway_integration" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
+  rest_api_id = var.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy.http_method
 
@@ -70,7 +66,7 @@ resource "aws_api_gateway_integration" "proxy" {
 
 # API Gateway Method Response
 resource "aws_api_gateway_method_response" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
+  rest_api_id = var.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy.http_method
   status_code = "200"
@@ -82,7 +78,7 @@ resource "aws_api_gateway_method_response" "proxy" {
 
 # API Gateway Integration Response
 resource "aws_api_gateway_integration_response" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
+  rest_api_id = var.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy.http_method
   status_code = aws_api_gateway_method_response.proxy.status_code
@@ -94,22 +90,23 @@ resource "aws_api_gateway_integration_response" "proxy" {
 
 # API Gateway Root Method
 resource "aws_api_gateway_method" "root" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_rest_api.main.root_resource_id
+  rest_api_id   = var.rest_api_id
+  resource_id   = data.aws_api_gateway_rest_api.main.root_resource_id
   http_method   = "ANY"
   authorization = "NONE"
 }
 
 # API Gateway Root Integration
 resource "aws_api_gateway_integration" "root" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_rest_api.main.root_resource_id
+  rest_api_id = var.rest_api_id
+  resource_id = data.aws_api_gateway_rest_api.main.root_resource_id
   http_method = aws_api_gateway_method.root.http_method
 
   integration_http_method = "ANY"
   type                    = "HTTP_PROXY"
   uri                     = "http://${var.alb_dns_name}/"
   passthrough_behavior    = "WHEN_NO_MATCH"
+  timeout_milliseconds    = 29000 # API Gateway max timeout (29 seconds)
 }
 
 # API Gateway Deployment
@@ -121,7 +118,7 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.root,
   ]
 
-  rest_api_id = aws_api_gateway_rest_api.main.id
+  rest_api_id = var.rest_api_id
   stage_name  = var.environment
 
   lifecycle {
@@ -132,7 +129,7 @@ resource "aws_api_gateway_deployment" "main" {
 # API Gateway Stage
 resource "aws_api_gateway_stage" "main" {
   deployment_id = aws_api_gateway_deployment.main.id
-  rest_api_id   = aws_api_gateway_rest_api.main.id
+  rest_api_id   = var.rest_api_id
   stage_name    = var.environment
 
   lifecycle {
@@ -148,12 +145,12 @@ resource "aws_api_gateway_stage" "main" {
 
 output "api_gateway_url" {
   description = "API Gateway endpoint URL (includes environment as stage)"
-  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}"
+  value       = "https://${var.rest_api_id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}"
 }
 
 output "oauth_callback_url" {
   description = "OAuth callback URL for Google OAuth configuration (includes environment)"
-  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}/api/v1/auth/callback/google"
+  value       = "https://${var.rest_api_id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.environment}/api/v1/auth/callback/google"
 }
 
 data "aws_region" "current" {}

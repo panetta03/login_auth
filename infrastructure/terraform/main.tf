@@ -72,9 +72,28 @@ module "redis" {
   allowed_security_groups    = [module.ecs.security_group_id]
 }
 
+# API Gateway REST API (created first to get the ID for redirect URI)
+# We create just the REST API resource first, then the integration after ECS is created
+resource "aws_api_gateway_rest_api" "main" {
+  name        = "${var.environment}-auth-service-api"
+  description = "Auth Service REST API"
+
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+
+  tags = {
+    Name        = "${var.environment}-auth-service-api"
+    Environment = var.environment
+  }
+}
+
+# Local value for constructing redirect URI from API Gateway REST API ID
+locals {
+  google_redirect_uri = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}/api/v1/auth/callback/google"
+}
+
 # ECS Module
-# Note: google_redirect_uri will be set after API Gateway is created
-# This creates a dependency cycle, so we construct it from the API Gateway REST API ID
 module "ecs" {
   source = "./modules/ecs"
 
@@ -91,17 +110,17 @@ module "ecs" {
   ecs_max_capacity            = var.ecs_max_capacity
   ecs_cpu                     = var.ecs_cpu
   ecs_memory                  = var.ecs_memory
-  # Redirect URI follows convention: https://{api-id}.execute-api.{region}.amazonaws.com/{environment}/api/v1/auth/callback/google
-  # This will be updated after API Gateway is created (may require two applies)
-  google_redirect_uri = ""
+  # Redirect URI constructed from API Gateway REST API ID
+  google_redirect_uri = local.google_redirect_uri
 }
 
-# API Gateway Module
+# API Gateway Module (integration and other resources)
 module "api_gateway" {
   source = "./modules/api-gateway"
 
-  environment     = var.environment
-  vpc_id          = module.vpc.vpc_id
-  ecs_service_arn = module.ecs.service_arn
-  alb_dns_name    = module.ecs.alb_dns_name
+  environment      = var.environment
+  vpc_id           = module.vpc.vpc_id
+  ecs_service_arn  = module.ecs.service_arn
+  alb_dns_name     = module.ecs.alb_dns_name
+  rest_api_id      = aws_api_gateway_rest_api.main.id
 }
