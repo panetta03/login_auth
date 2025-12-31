@@ -401,20 +401,5 @@ jobs:
           echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
-  trigger-cicd:
-    runs-on: ubuntu-latest
-    needs: terraform-apply
-    if: |
-      needs.terraform-apply.outcome == 'success' &&
-      github.event_name == 'push'
-    
-    steps:
-      - name: Trigger CI/CD Workflow
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            // Trigger CI/CD workflow via workflow_run event
-            // The CI/CD workflow will detect this and run automatically
-            console.log('Infrastructure deployment completed. CI/CD will run automatically via workflow_run trigger.');
-            console.log('No manual trigger needed - CI/CD workflow listens for Infrastructure Deployment completion.');
+  # Note: CI/CD is automatically triggered via workflow_run event when this workflow completes successfully
+  # No explicit trigger step needed - the workflow_run trigger in CI/CD workflow handles this

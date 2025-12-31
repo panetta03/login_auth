@@ -6,11 +6,20 @@ on:
   push:
     branches: [main, develop]
     # Only trigger on push if infrastructure files are NOT changed
-    # This prevents duplicate runs when infrastructure workflow triggers CI/CD
-    paths-ignore:
-      - 'infrastructure/**'
-      - '.github/workflows/infrastructure.yml'
-      - '.github/workflows/promote-to-prod.yml'
+    # Use paths to explicitly list what SHOULD trigger (more reliable than paths-ignore)
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'jest.config.js'
+      - '.eslintrc.js'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/ci-cd.yml'
   workflow_dispatch:  # Can be triggered manually
   workflow_run:
     workflows: ["Infrastructure Deployment", "Promote Dev to Prod"]
@@ -135,11 +144,15 @@ jobs:
     needs: [test, security, build]
     if: |
       github.ref == 'refs/heads/main' && 
-      (github.event_name == 'push' || 
-       github.event_name == 'workflow_dispatch' || 
-       (github.event_name == 'workflow_run' && 
-        github.event.workflow_run.conclusion == 'success' && 
-        github.event.workflow_run.event == 'push'))
+      (
+        github.event_name == 'workflow_dispatch' || 
+        (github.event_name == 'workflow_run' && 
+         github.event.workflow_run.conclusion == 'success' && 
+         github.event.workflow_run.event == 'push') ||
+        (github.event_name == 'push' && 
+         !contains(github.event.head_commit.message, 'infrastructure') &&
+         !contains(join(github.event.head_commit.modified, ','), 'infrastructure/'))
+      )
     environment:
       name: production
 
