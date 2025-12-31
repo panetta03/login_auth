@@ -92,7 +92,7 @@ resource "aws_api_gateway_integration_response" "proxy" {
 # API Gateway Root Method
 resource "aws_api_gateway_method" "root" {
   rest_api_id   = var.rest_api_id
-  resource_id   = data.aws_api_gateway_rest_api.main.root_resource_id
+  resource_id   = var.root_resource_id
   http_method   = "ANY"
   authorization = "NONE"
 }
@@ -100,7 +100,7 @@ resource "aws_api_gateway_method" "root" {
 # API Gateway Root Integration
 resource "aws_api_gateway_integration" "root" {
   rest_api_id = var.rest_api_id
-  resource_id = data.aws_api_gateway_rest_api.main.root_resource_id
+  resource_id = var.root_resource_id
   http_method = aws_api_gateway_method.root.http_method
 
   integration_http_method = "ANY"
