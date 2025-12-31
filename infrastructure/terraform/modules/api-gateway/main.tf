@@ -25,7 +25,7 @@ variable "rest_api_id" {
 # This breaks the circular dependency: REST API -> ECS -> API Gateway integration
 # We use a data source to get the root_resource_id, but reference the ID directly elsewhere
 data "aws_api_gateway_rest_api" "main" {
-  rest_api_id = var.rest_api_id
+  id = var.rest_api_id
 }
 
 # API Gateway Resource - Proxy

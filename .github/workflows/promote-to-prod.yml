@@ -375,17 +375,10 @@ jobs:
           echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
-      - name: Trigger CI/CD for Prod
+      - name: Note CI/CD Trigger
         if: success()
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'ci-cd.yml',
-              ref: context.ref
-            });
-            console.log('CI/CD workflow triggered for prod deployment');
+        run: |
+          echo "✅ Prod infrastructure deployment completed."
+          echo "CI/CD will run automatically via workflow_run trigger."
+          echo "The CI/CD workflow listens for 'Promote Dev to Prod' completion."
 

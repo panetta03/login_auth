@@ -414,10 +414,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'ci-cd.yml',
-              ref: context.ref
-            });
-            console.log('CI/CD workflow triggered successfully');
+            // Trigger CI/CD workflow via workflow_run event
+            // The CI/CD workflow will detect this and run automatically
+            console.log('Infrastructure deployment completed. CI/CD will run automatically via workflow_run trigger.');
+            console.log('No manual trigger needed - CI/CD workflow listens for Infrastructure Deployment completion.');
