@@ -6,20 +6,11 @@ on:
   push:
     branches: [main, develop]
     # Only trigger on push if infrastructure files are NOT changed
-    # Use paths to explicitly list what SHOULD trigger (more reliable than paths-ignore)
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'jest.config.js'
-      - '.eslintrc.js'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'docs/**'
-      - 'README.md'
-      - '.github/workflows/ci-cd.yml'
+    # If infrastructure files are changed, CI/CD will be triggered by Infrastructure workflow instead
+    paths-ignore:
+      - 'infrastructure/**'
+      - '.github/workflows/infrastructure.yml'
+      - '.github/workflows/promote-to-prod.yml'
   workflow_dispatch:  # Can be triggered manually or by Infrastructure workflow
     inputs:
       environment:

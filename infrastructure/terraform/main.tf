@@ -13,9 +13,7 @@ terraform {
     # bucket = "your-terraform-state-bucket"
     # key    = "auth-service/terraform.tfstate"
     # region = "us-east-1"
-    # Backend is configured dynamically in GitHub Actions workflow
-    # Trivial change to trigger Infrastructure workflow for testing
-    # Testing explicit CI/CD trigger from Infrastructure workflow
+    # test
   }
 }
 

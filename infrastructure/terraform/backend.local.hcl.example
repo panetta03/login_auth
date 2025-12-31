@@ -8,3 +8,4 @@ region         = "us-east-2"
 encrypt        = true
 dynamodb_table = "auth-service-terraform-state-dev-us-east-2-lock"
 
+

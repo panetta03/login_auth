@@ -269,3 +269,4 @@ This pattern gives you:
 - No code changes needed
 - Environment-specific configurations
 
+
