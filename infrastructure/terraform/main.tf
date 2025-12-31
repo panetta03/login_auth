@@ -123,4 +123,5 @@ module "api_gateway" {
   ecs_service_arn  = module.ecs.service_arn
   alb_dns_name     = module.ecs.alb_dns_name
   rest_api_id      = aws_api_gateway_rest_api.main.id
+  # environment is needed for data source lookup
 }

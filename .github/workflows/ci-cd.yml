@@ -5,7 +5,16 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
-  workflow_dispatch:  # Can be triggered manually or by infrastructure workflow
+    paths-ignore:
+      - 'infrastructure/**'
+      - '.github/workflows/infrastructure.yml'
+      - '.github/workflows/promote-to-prod.yml'
+  workflow_dispatch:  # Can be triggered manually
+  workflow_run:
+    workflows: ["Infrastructure Deployment", "Promote Dev to Prod"]
+    types:
+      - completed
+    branches: [main]
 
 env:
   AWS_REGION: us-east-2
