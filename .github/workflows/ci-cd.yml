@@ -5,13 +5,8 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
-    # Only trigger on push if infrastructure files are NOT changed
-    # If infrastructure files are changed, CI/CD will be triggered by Infrastructure workflow instead
-    paths-ignore:
-      - 'infrastructure/**'
-      - '.github/workflows/infrastructure.yml'
-      - '.github/workflows/promote-to-prod.yml'
-      - '.github/workflows/ci-cd.yml'
+    # Note: We check for infrastructure changes in the deploy job's if condition
+    # This ensures CI/CD doesn't run if infrastructure files are changed
   workflow_dispatch:  # Can be triggered manually or by Infrastructure workflow
     inputs:
       environment:
@@ -134,15 +129,39 @@ jobs:
       - name: Build
         run: npm run build
 
+  check-infrastructure-changes:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    outputs:
+      has_infrastructure_changes: ${{ steps.check.outputs.has_infrastructure }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for infrastructure changes
+        id: check
+        run: |
+          # Check if any infrastructure files changed in this commit
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^(infrastructure/|\.github/workflows/infrastructure\.yml|\.github/workflows/promote-to-prod\.yml)'; then
+            echo "has_infrastructure=true" >> $GITHUB_OUTPUT
+            echo "❌ Infrastructure files changed - CI/CD will be skipped (Infrastructure workflow will trigger CI/CD instead)"
+          else
+            echo "has_infrastructure=false" >> $GITHUB_OUTPUT
+            echo "✅ No infrastructure changes - CI/CD can proceed"
+          fi
+
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [test, security, build]
+    needs: [check-infrastructure-changes, test, security, build]
     if: |
       github.ref == 'refs/heads/main' && 
       (
         github.event_name == 'workflow_dispatch' || 
-        (github.event_name == 'push')
+        (github.event_name == 'push' && 
+         (needs.check-infrastructure-changes.outputs.has_infrastructure_changes != 'true' || needs.check-infrastructure-changes.result == 'skipped'))
       )
     environment:
       name: ${{ github.event.inputs.environment || 'dev' }}
