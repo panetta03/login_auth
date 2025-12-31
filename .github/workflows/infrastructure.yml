@@ -274,7 +274,7 @@ jobs:
       # This job will WAIT for approval before running (not skip)
       # Same environment as plan, but protection rules only gate this apply job
     if: |
-      needs.terraform-plan.outcome == 'success' &&
+      needs.terraform-plan.result == 'success' &&
       (github.event.inputs.action == 'apply' || github.event_name == 'push')
     
     steps:
