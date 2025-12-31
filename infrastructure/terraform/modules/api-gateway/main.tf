@@ -120,7 +120,7 @@ resource "aws_api_gateway_deployment" "main" {
   ]
 
   rest_api_id = var.rest_api_id
-  stage_name  = var.environment
+  # stage_name is deprecated - use aws_api_gateway_stage resource instead
 
   lifecycle {
     create_before_destroy = true
