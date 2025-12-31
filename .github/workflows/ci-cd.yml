@@ -26,6 +26,8 @@ on:
     types:
       - completed
     branches: [main]
+    # Only trigger when workflow completes successfully AND apply job ran
+    # We'll check in the deploy job that terraform-apply actually succeeded
 
 env:
   AWS_REGION: us-east-2
