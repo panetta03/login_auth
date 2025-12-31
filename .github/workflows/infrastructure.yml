@@ -430,3 +430,36 @@ jobs:
           echo "**Action Required:**" >> $GITHUB_STEP_SUMMARY
           echo "- Fix the infrastructure deployment errors above" >> $GITHUB_STEP_SUMMARY
           echo "- Re-run this workflow after fixing the issues" >> $GITHUB_STEP_SUMMARY
+
+  trigger-cicd:
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: |
+      needs.terraform-apply.result == 'success' &&
+      (github.event.inputs.action == 'apply' || github.event_name == 'push')
+    steps:
+      - name: Trigger CI/CD Workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            console.log('🚀 Triggering CI/CD workflow...');
+            
+            // Trigger the CI/CD workflow via workflow_dispatch
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci-cd.yml',
+              ref: context.ref
+            });
+            
+            console.log('✅ CI/CD workflow triggered successfully');
+            
+            // Add summary
+            const fs = require('fs');
+            const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+            if (summaryPath) {
+              fs.appendFileSync(summaryPath, '## ✅ CI/CD Workflow Triggered\n\n');
+              fs.appendFileSync(summaryPath, 'The CI/CD workflow has been triggered and will build and deploy the application.\n\n');
+              fs.appendFileSync(summaryPath, 'Monitor the CI/CD workflow in the [Actions tab](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions).\n');
+            }
