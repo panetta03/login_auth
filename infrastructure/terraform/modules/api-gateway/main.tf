@@ -135,6 +135,8 @@ resource "aws_api_gateway_stage" "main" {
 
   lifecycle {
     # Stage may already exist from previous deployments
+    # Use create_before_destroy to handle updates gracefully
+    create_before_destroy = true
     ignore_changes = [deployment_id]
   }
 
