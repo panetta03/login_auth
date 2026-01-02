@@ -10,6 +10,14 @@ const dialect = new PostgresDialect({
     min: config.database.poolMin,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    // RDS requires SSL connections
+    // If sslmode is in the connection string, pg will use it automatically
+    // Otherwise, we can set it here explicitly
+    ssl:
+      config.database.url.includes('rds.amazonaws.com') ||
+      config.database.url.includes('amazonaws.com')
+        ? { rejectUnauthorized: false } // RDS uses self-signed certificates
+        : undefined,
   }),
 });
 

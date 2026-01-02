@@ -129,8 +129,8 @@ output "endpoint" {
 }
 
 output "database_url" {
-  description = "Database connection URL"
-  value       = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.endpoint}/${var.db_name}"
+  description = "Database connection URL (with SSL required for RDS)"
+  value       = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.endpoint}/${var.db_name}?sslmode=require"
   sensitive   = true
 }
 
