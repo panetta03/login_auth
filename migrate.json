@@ -1,5 +1,4 @@
 {
-  "databaseUrl": "postgresql://postgres:postgres@localhost:5432/auth_service",
   "migrationsDir": "./src/database/migrations",
   "migrationTable": "pgmigrations"
 }

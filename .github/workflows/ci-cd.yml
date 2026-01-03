@@ -693,15 +693,55 @@ jobs:
       - name: Run type check
         run: npm run type-check
 
-      - name: Build application
-        run: npm run build
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get database URL from Terraform
+        id: get-db-url
+        run: |
+          ENV="${{ needs.terraform-plan.outputs.environment || github.event.inputs.environment || 'dev' }}"
+          BUCKET_NAME="${{ needs.terraform-plan.outputs.state_bucket_name }}"
+          
+          echo "Getting database URL from Terraform state..."
+          cd infrastructure/terraform
+          
+          # Initialize Terraform to access state
+          terraform init \
+            -backend-config="bucket=${BUCKET_NAME}" \
+            -backend-config="key=${ENV}/terraform.tfstate" \
+            -backend-config="region=us-east-2" \
+            -backend-config="dynamodb_table=${BUCKET_NAME}-lock" \
+            -no-color
+          
+          # Get database URL from outputs
+          DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          
+          if [ -z "$DATABASE_URL" ]; then
+            echo "⚠️ Warning: Could not get database_url from Terraform outputs"
+            echo "Migrations will be skipped. Please ensure database is set up."
+            echo "database_url=" >> $GITHUB_OUTPUT
+            echo "skip_migrations=true" >> $GITHUB_OUTPUT
+          else
+            echo "✓ Database URL retrieved (hidden for security)"
+            echo "database_url=${DATABASE_URL}" >> $GITHUB_OUTPUT
+            echo "skip_migrations=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run database migrations
+        if: steps.get-db-url.outputs.skip_migrations != 'true'
+        run: |
+          echo "Running database migrations..."
+          export DATABASE_URL="${{ steps.get-db-url.outputs.database_url }}"
+          npm run migrate:up
+        env:
+          DATABASE_URL: ${{ steps.get-db-url.outputs.database_url }}
+
+      - name: Build application
+        run: npm run build
 
       - name: Create ECR repository if it doesn't exist
         run: |

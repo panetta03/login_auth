@@ -24,6 +24,12 @@ output "rds_endpoint" {
   sensitive   = true
 }
 
+output "database_url" {
+  description = "Database connection URL"
+  value       = module.rds.database_url
+  sensitive   = true
+}
+
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint"
   value       = module.redis.endpoint
