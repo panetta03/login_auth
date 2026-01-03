@@ -458,8 +458,8 @@ jobs:
         continue-on-error: true
 
       - name: Import Existing Resources (if needed)
-        continue-on-error: true
         run: |
+          set +e  # Disable exit on error for this script
           echo "Checking for existing resources to import..."
           ENV="${{ needs.terraform-plan.outputs.environment }}"
           BUCKET_NAME="${{ steps.state-bucket-apply.outputs.bucket_name }}"
@@ -471,7 +471,7 @@ jobs:
               -var="db_username=${{ secrets.DB_USERNAME }}" \
               -var="db_password=${{ secrets.DB_PASSWORD }}" \
               -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.ecs.aws_ecs_cluster.main "${ENV}-auth-service-cluster" || echo "ECS cluster already in state or import failed"
+              module.ecs.aws_ecs_cluster.main "${ENV}-auth-service-cluster" 2>&1 || echo "ECS cluster already in state or import failed"
           fi
           
           # Get REST API ID, handling potential whitespace issues
@@ -523,8 +523,9 @@ jobs:
               -var="db_username=${{ secrets.DB_USERNAME }}" \
               -var="db_password=${{ secrets.DB_PASSWORD }}" \
               -var="terraform_state_bucket_name=${BUCKET_NAME}" \
-              module.redis.aws_elasticache_replication_group.main "${ENV}-auth-service-redis" || echo "Redis already in state or import failed"
+              module.redis.aws_elasticache_replication_group.main "${ENV}-auth-service-redis" 2>&1 || echo "Redis already in state or import failed"
           fi
+          exit 0  # Always exit successfully
         working-directory: infrastructure/terraform
         continue-on-error: true
 
