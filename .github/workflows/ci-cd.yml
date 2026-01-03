@@ -458,6 +458,7 @@ jobs:
         continue-on-error: true
 
       - name: Import Existing Resources (if needed)
+        continue-on-error: true
         run: |
           echo "Checking for existing resources to import..."
           ENV="${{ needs.terraform-plan.outputs.environment }}"
