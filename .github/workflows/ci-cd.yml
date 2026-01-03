@@ -578,6 +578,24 @@ jobs:
           echo "✅ Terraform apply completed successfully"
         working-directory: infrastructure/terraform
 
+      - name: Get database URL from Terraform outputs
+        id: get-db-url
+        if: success()
+        run: |
+          echo "Getting database URL from Terraform outputs after apply..."
+          
+          # Get database URL from outputs
+          DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          
+          if [ -z "$DATABASE_URL" ]; then
+            echo "⚠️ Warning: Could not get database_url from Terraform outputs"
+            echo "database_url=" >> $GITHUB_OUTPUT
+          else
+            echo "✓ Database URL retrieved (hidden for security)"
+            echo "database_url=${DATABASE_URL}" >> $GITHUB_OUTPUT
+          fi
+        working-directory: infrastructure/terraform
+
   test:
     runs-on: ubuntu-latest
 
@@ -719,12 +737,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Run database migrations
-        if: needs.terraform-plan.outputs.database_url != ''
+        if: needs.terraform-apply.outputs.database_url != '' || needs.terraform-plan.outputs.database_url != ''
         run: |
           echo "Running database migrations..."
           npm run migrate:up
         env:
-          DATABASE_URL: ${{ needs.terraform-plan.outputs.database_url }}
+          DATABASE_URL: ${{ needs.terraform-apply.outputs.database_url || needs.terraform-plan.outputs.database_url }}
 
       - name: Build application
         run: npm run build
