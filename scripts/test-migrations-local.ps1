@@ -9,10 +9,10 @@ Write-Host ""
 
 # Check if Docker is running
 Write-Host "1. Checking Docker..." -ForegroundColor Yellow
-try {
-    docker ps | Out-Null
+$dockerCheck = docker ps 2>&1
+if ($LASTEXITCODE -eq 0) {
     Write-Host "   ✓ Docker is running" -ForegroundColor Green
-} catch {
+} else {
     Write-Host "   ❌ Docker is not running. Please start Docker Desktop." -ForegroundColor Red
     exit 1
 }
@@ -52,16 +52,11 @@ Write-Host "   ✓ DATABASE_URL is set" -ForegroundColor Green
 Write-Host ""
 Write-Host "3. Building Docker image..." -ForegroundColor Yellow
 $imageName = "auth-service:test-migrations"
-try {
-    docker build -t $imageName .
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "   ✓ Docker image built successfully" -ForegroundColor Green
-    } else {
-        Write-Host "   ❌ Docker build failed" -ForegroundColor Red
-        exit 1
-    }
-} catch {
-    Write-Host "   ❌ Docker build failed: $_" -ForegroundColor Red
+docker build -t $imageName . 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "   ✓ Docker image built successfully" -ForegroundColor Green
+} else {
+    Write-Host "   ❌ Docker build failed" -ForegroundColor Red
     exit 1
 }
 
