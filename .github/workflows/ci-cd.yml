@@ -829,9 +829,9 @@ jobs:
           SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
           
           # Create network configuration JSON
-          # SUBNETS is a JSON array from Terraform output, but GitHub Actions outputs are strings
-          # Parse it first to ensure it's valid JSON, then use it in the network config
-          SUBNETS_JSON=$(echo "$SUBNETS" | jq -c '. // fromjson // []')
+          # SUBNETS is a JSON array string from Terraform output (GitHub Actions outputs are strings)
+          # Parse the string as JSON using fromjson
+          SUBNETS_JSON=$(echo "$SUBNETS" | jq -c 'fromjson' 2>/dev/null || echo "[]")
           
           NETWORK_CONFIG=$(jq -n \
             --argjson subnets "$SUBNETS_JSON" \
