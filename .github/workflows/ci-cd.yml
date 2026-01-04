@@ -812,7 +812,14 @@ jobs:
         continue-on-error: true
 
       - name: Run database migrations as ECS task
-        if: steps.get-ecs-details.outputs.task_def_arn != '' && steps.get-ecs-details.outputs.cluster_name != ''
+        if: |
+          steps.get-ecs-details.outcome == 'success' &&
+          steps.get-ecs-details.outputs.task_def_arn != '' &&
+          steps.get-ecs-details.outputs.cluster_name != '' &&
+          (
+            needs.terraform-apply.result == 'success' ||
+            needs.terraform-plan.result == 'skipped'
+          )
         run: |
           echo "Running database migrations as one-time ECS task..."
           
@@ -859,28 +866,46 @@ jobs:
           fi
           
           echo "Migration task started: ${TASK_ARN}"
-          echo "Waiting for task to complete..."
+          echo "Waiting for migration task to complete (this may take a few minutes)..."
           
-          # Wait for task to complete (max 10 minutes)
-          aws ecs wait tasks-stopped \
+          # Use AWS CLI's optimized wait command (uses exponential backoff, most efficient)
+          # This is the cheapest and most reliable approach - AWS handles retries internally
+          if ! aws ecs wait tasks-stopped \
             --cluster "${CLUSTER_NAME}" \
             --tasks "${TASK_ARN}" \
-            --region ${{ env.AWS_REGION }} || true
+            --region ${{ env.AWS_REGION }}; then
+            echo "⚠️ Warning: Task wait timed out or failed, checking task status..."
+          fi
           
-          # Get task exit code
-          EXIT_CODE=$(aws ecs describe-tasks \
+          # Get task status and exit code (single API call for both)
+          TASK_INFO=$(aws ecs describe-tasks \
             --cluster "${CLUSTER_NAME}" \
             --tasks "${TASK_ARN}" \
             --region ${{ env.AWS_REGION }} \
-            --query 'tasks[0].containers[0].exitCode' \
-            --output text)
+            --query 'tasks[0].{status:lastStatus,exitCode:containers[0].exitCode,stopCode:stopCode,stoppedReason:stoppedReason}' \
+            --output json)
           
-          # Get task logs
-          echo "Fetching migration task logs..."
+          TASK_STATUS=$(echo "$TASK_INFO" | jq -r '.status // "UNKNOWN"')
+          EXIT_CODE=$(echo "$TASK_INFO" | jq -r '.exitCode // "null"')
+          STOP_CODE=$(echo "$TASK_INFO" | jq -r '.stopCode // "null"')
+          STOPPED_REASON=$(echo "$TASK_INFO" | jq -r '.stoppedReason // "null"')
+          
+          echo "Task status: ${TASK_STATUS}"
+          if [ "$STOP_CODE" != "null" ] && [ "$STOP_CODE" != "" ]; then
+            echo "Stop code: ${STOP_CODE}"
+          fi
+          if [ "$STOPPED_REASON" != "null" ] && [ "$STOPPED_REASON" != "" ]; then
+            echo "Stopped reason: ${STOPPED_REASON}"
+          fi
+          
+          # Fetch logs if available (single API call)
           LOG_GROUP="/ecs/${{ needs.terraform-plan.outputs.environment || 'dev' }}-auth-service"
+          TASK_ID="${TASK_ARN##*/}"
+          CONTAINER_NAME="auth-service"
+          
           LOG_STREAM=$(aws logs describe-log-streams \
             --log-group-name "${LOG_GROUP}" \
-            --log-stream-name-prefix "ecs/auth-service/${TASK_ARN##*/}" \
+            --log-stream-name-prefix "ecs/${CONTAINER_NAME}/${TASK_ID}" \
             --region ${{ env.AWS_REGION }} \
             --order-by LastEventTime \
             --descending \
@@ -896,11 +921,20 @@ jobs:
               --region ${{ env.AWS_REGION }} \
               --query 'events[*].message' \
               --output text 2>/dev/null || echo "Could not retrieve logs"
-            echo "=========================="
+            echo "=============================="
+          else
+            echo "⚠️ Logs not available yet (this is normal if task just completed)"
           fi
           
+          # Check exit code - this is the authoritative success/failure indicator
           if [ "$EXIT_CODE" = "0" ]; then
             echo "✅ Database migrations completed successfully"
+          elif [ "$EXIT_CODE" = "null" ] || [ -z "$EXIT_CODE" ]; then
+            echo "❌ Error: Could not determine task exit code. Task status: ${TASK_STATUS}"
+            if [ "$TASK_STATUS" != "STOPPED" ]; then
+              echo "Task may still be running or in an unexpected state."
+            fi
+            exit 1
           else
             echo "❌ Error: Migration task failed with exit code: ${EXIT_CODE}"
             exit 1
