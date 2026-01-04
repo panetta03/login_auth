@@ -811,27 +811,11 @@ jobs:
         working-directory: infrastructure/terraform
         continue-on-error: true
 
-      - name: Get updated task definition after service update
-        id: get-updated-task-def
-        if: steps.update-service.outcome == 'success'
-        run: |
-          echo "Getting updated task definition ARN from ECS service..."
-          TASK_DEF_ARN=$(aws ecs describe-services \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'services[0].taskDefinition' \
-            --output text)
-          
-          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
-          echo "Updated task definition: ${TASK_DEF_ARN}"
-
       - name: Run database migrations as ECS task
         if: |
           steps.get-ecs-details.outcome == 'success' &&
           steps.get-ecs-details.outputs.cluster_name != '' &&
-          steps.get-updated-task-def.outcome == 'success' &&
-          steps.get-updated-task-def.outputs.task_def_arn != '' &&
+          steps.build-image.outcome == 'success' &&
           (
             needs.terraform-apply.result == 'success' ||
             needs.terraform-plan.result == 'skipped'
@@ -840,10 +824,39 @@ jobs:
           echo "Running database migrations as one-time ECS task..."
           
           CLUSTER_NAME="${{ steps.get-ecs-details.outputs.cluster_name }}"
-          # Use the updated task definition (after service update with new image)
-          TASK_DEF_ARN="${{ steps.get-updated-task-def.outputs.task_def_arn }}"
+          # Get the ECR registry and construct the image URI
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          # Use the same tag format as the build step (latest or commit SHA)
+          IMAGE_TAG="latest"
+          FULL_IMAGE_URI="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}"
+          
+          # Get the existing task definition to use as a template
+          EXISTING_TASK_DEF_ARN="${{ steps.get-ecs-details.outputs.task_def_arn }}"
           SUBNETS="${{ steps.get-ecs-details.outputs.private_subnets }}"
           SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
+          
+          echo "Using newly built image: ${FULL_IMAGE_URI}"
+          echo "Base task definition: ${EXISTING_TASK_DEF_ARN}"
+          
+          # Get the task definition JSON and update it to use the new image
+          TASK_DEF_JSON=$(aws ecs describe-task-definition \
+            --task-definition "${EXISTING_TASK_DEF_ARN}" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' \
+            --output json)
+          
+          # Update the image in the task definition JSON
+          UPDATED_TASK_DEF_JSON=$(echo "$TASK_DEF_JSON" | jq --arg img "$FULL_IMAGE_URI" '.containerDefinitions[0].image = $img | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          
+          # Register a new task definition revision with the new image
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$UPDATED_TASK_DEF_JSON" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "Registered new task definition for migrations: ${NEW_TASK_DEF_ARN}"
+          TASK_DEF_ARN="${NEW_TASK_DEF_ARN}"
           
           # Create network configuration JSON
           # SUBNETS may be in different formats from Terraform/GitHub Actions
