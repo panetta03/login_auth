@@ -830,9 +830,24 @@ jobs:
           
           # Create network configuration JSON
           # SUBNETS is a JSON array string from Terraform output (GitHub Actions outputs are strings)
-          # The value is already valid JSON, so parse it directly (not as a JSON-encoded string)
-          # Try parsing as raw JSON first, fallback to fromjson if it's double-encoded
-          SUBNETS_JSON=$(echo "$SUBNETS" | jq -c '.' 2>/dev/null || echo "$SUBNETS" | jq -c 'fromjson' 2>/dev/null || echo "[]")
+          # Debug: Show what we're trying to parse
+          echo "Debug: SUBNETS value: $SUBNETS"
+          echo "Debug: SUBNETS length: ${#SUBNETS}"
+          
+          # Parse the JSON array - try multiple approaches
+          # First, try parsing directly (it should be valid JSON)
+          if echo "$SUBNETS" | jq -e '.' >/dev/null 2>&1; then
+            SUBNETS_JSON=$(echo "$SUBNETS" | jq -c '.')
+            echo "Debug: Parsed as raw JSON"
+          elif echo "\"$SUBNETS\"" | jq -e 'fromjson' >/dev/null 2>&1; then
+            SUBNETS_JSON=$(echo "\"$SUBNETS\"" | jq -c 'fromjson')
+            echo "Debug: Parsed as JSON-encoded string"
+          else
+            echo "⚠️ Warning: Failed to parse SUBNETS, using empty array"
+            SUBNETS_JSON="[]"
+          fi
+          
+          echo "Debug: SUBNETS_JSON: $SUBNETS_JSON"
           
           NETWORK_CONFIG=$(jq -n \
             --argjson subnets "$SUBNETS_JSON" \
