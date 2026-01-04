@@ -584,21 +584,34 @@ jobs:
 
       - name: Get database URL from Terraform outputs
         id: get-db-url
-        if: success()
         run: |
           echo "Getting database URL from Terraform outputs after apply..."
           
-          # Get database URL from outputs
-          DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          # Get database URL from outputs (use -json and jq for more reliable parsing)
+          DATABASE_URL=$(terraform output -json database_url 2>/dev/null | jq -r '.value // empty' || echo "")
           
-          if [ -z "$DATABASE_URL" ]; then
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
             echo "⚠️ Warning: Could not get database_url from Terraform outputs"
+            echo "Attempting fallback method..."
+            DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
+            echo "⚠️ Warning: database_url is empty or not available"
             echo "database_url=" >> $GITHUB_OUTPUT
           else
             echo "✓ Database URL retrieved (hidden for security)"
             echo "database_url=${DATABASE_URL}" >> $GITHUB_OUTPUT
           fi
+          
+          # Debug: Show if output was set (without revealing the URL)
+          if [ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" != "null" ]; then
+            echo "✓ Output set successfully (length: ${#DATABASE_URL} characters)"
+          else
+            echo "⚠️ Output is empty or null"
+          fi
         working-directory: infrastructure/terraform
+        continue-on-error: true
 
   test:
     runs-on: ubuntu-latest
@@ -740,13 +753,49 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Get database URL from Terraform outputs
+        id: get-db-url
+        run: |
+          echo "Getting database URL from Terraform outputs..."
+          ENV="${{ needs.terraform-plan.outputs.environment || 'dev' }}"
+          BUCKET_NAME="auth-service-terraform-state-${ENV}-${{ env.AWS_REGION }}"
+          
+          # Initialize Terraform to access outputs
+          terraform init \
+            -backend-config="bucket=${BUCKET_NAME}" \
+            -backend-config="key=${ENV}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${BUCKET_NAME}-lock" \
+            -reconfigure \
+            -no-color
+          
+          # Get database URL from outputs
+          DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
+            echo "⚠️ Warning: Could not get database_url from Terraform outputs"
+            echo "database_url=" >> $GITHUB_OUTPUT
+          else
+            echo "✓ Database URL retrieved (hidden for security)"
+            echo "database_url=${DATABASE_URL}" >> $GITHUB_OUTPUT
+          fi
+        working-directory: infrastructure/terraform
+        continue-on-error: true
+
       - name: Run database migrations
-        if: needs.terraform-apply.outputs.database_url != '' || needs.terraform-plan.outputs.database_url != ''
+        if: steps.get-db-url.outputs.database_url != ''
         run: |
           echo "Running database migrations..."
           npm run migrate:up
         env:
-          DATABASE_URL: ${{ needs.terraform-apply.outputs.database_url || needs.terraform-plan.outputs.database_url }}
+          DATABASE_URL: ${{ steps.get-db-url.outputs.database_url }}
 
       - name: Build application
         run: npm run build
