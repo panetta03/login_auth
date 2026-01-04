@@ -943,6 +943,22 @@ jobs:
             exit 1
           fi
           
+          # Ensure DATABASE_URL has SSL parameters for RDS connections
+          # node-pg-migrate uses the connection string directly, so we need SSL in the URL
+          if [[ "$DATABASE_URL" == *"rds.amazonaws.com"* ]] || [[ "$DATABASE_URL" == *"amazonaws.com"* ]]; then
+            # Check if URL already has query parameters
+            if [[ "$DATABASE_URL" == *"?"* ]]; then
+              # Append sslmode if not already present
+              if [[ "$DATABASE_URL" != *"sslmode"* ]]; then
+                DATABASE_URL="${DATABASE_URL}&sslmode=require"
+              fi
+            else
+              # Add sslmode as first query parameter
+              DATABASE_URL="${DATABASE_URL}?sslmode=require"
+            fi
+            echo "✓ Added SSL requirement to DATABASE_URL for RDS connection"
+          fi
+          
           # Get the task definition JSON and update it to use the new image
           TASK_DEF_JSON=$(aws ecs describe-task-definition \
             --task-definition "${EXISTING_TASK_DEF_ARN}" \
