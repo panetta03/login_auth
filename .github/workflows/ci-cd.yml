@@ -759,10 +759,10 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Get database URL from Terraform outputs
-        id: get-db-url
+      - name: Get ECS infrastructure details from Terraform
+        id: get-ecs-details
         run: |
-          echo "Getting database URL from Terraform outputs..."
+          echo "Getting ECS infrastructure details from Terraform outputs..."
           ENV="${{ needs.terraform-plan.outputs.environment || 'dev' }}"
           BUCKET_NAME="auth-service-terraform-state-${ENV}-${{ env.AWS_REGION }}"
           
@@ -776,26 +776,135 @@ jobs:
             -reconfigure \
             -no-color
           
-          # Get database URL from outputs
-          DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          # Get required values from Terraform outputs
+          CLUSTER_NAME=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
+          PRIVATE_SUBNETS=$(terraform output -json private_subnet_ids 2>/dev/null || echo "[]")
+          SECURITY_GROUP=$(terraform output -raw ecs_security_group_id 2>/dev/null || echo "")
           
-          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
-            echo "⚠️ Warning: Could not get database_url from Terraform outputs"
-            echo "database_url=" >> $GITHUB_OUTPUT
+          # Get task definition ARN from ECS service
+          if [ -n "$CLUSTER_NAME" ]; then
+            SERVICE_NAME=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")
+            if [ -n "$SERVICE_NAME" ]; then
+              TASK_DEF_ARN=$(aws ecs describe-services \
+                --cluster "${CLUSTER_NAME}" \
+                --services "${SERVICE_NAME}" \
+                --region ${{ env.AWS_REGION }} \
+                --query 'services[0].taskDefinition' \
+                --output text 2>/dev/null || echo "")
+            fi
+          fi
+          
+          echo "cluster_name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
+          echo "private_subnets=${PRIVATE_SUBNETS}" >> $GITHUB_OUTPUT
+          echo "security_group=${SECURITY_GROUP}" >> $GITHUB_OUTPUT
+          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
+          
+          if [ -z "$CLUSTER_NAME" ] || [ -z "$TASK_DEF_ARN" ] || [ "$PRIVATE_SUBNETS" = "[]" ] || [ -z "$SECURITY_GROUP" ]; then
+            echo "⚠️ Warning: Some ECS infrastructure details are missing"
+            echo "cluster_name=${CLUSTER_NAME}"
+            echo "task_def_arn=${TASK_DEF_ARN}"
+            echo "private_subnets=${PRIVATE_SUBNETS}"
+            echo "security_group=${SECURITY_GROUP}"
           else
-            echo "✓ Database URL retrieved (hidden for security)"
-            echo "database_url=${DATABASE_URL}" >> $GITHUB_OUTPUT
+            echo "✓ ECS infrastructure details retrieved"
           fi
         working-directory: infrastructure/terraform
         continue-on-error: true
 
-      - name: Run database migrations
-        if: steps.get-db-url.outputs.database_url != ''
+      - name: Run database migrations as ECS task
+        if: steps.get-ecs-details.outputs.task_def_arn != '' && steps.get-ecs-details.outputs.cluster_name != ''
         run: |
-          echo "Running database migrations..."
-          npm run migrate:up
-        env:
-          DATABASE_URL: ${{ steps.get-db-url.outputs.database_url }}
+          echo "Running database migrations as one-time ECS task..."
+          
+          CLUSTER_NAME="${{ steps.get-ecs-details.outputs.cluster_name }}"
+          TASK_DEF_ARN="${{ steps.get-ecs-details.outputs.task_def_arn }}"
+          SUBNETS="${{ steps.get-ecs-details.outputs.private_subnets }}"
+          SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
+          
+          # Create network configuration JSON
+          NETWORK_CONFIG=$(jq -n \
+            --argjson subnets "$SUBNETS" \
+            --arg sg "$SECURITY_GROUP" \
+            '{
+              "awsvpcConfiguration": {
+                "subnets": $subnets,
+                "securityGroups": [$sg],
+                "assignPublicIp": "DISABLED"
+              }
+            }')
+          
+          echo "Cluster: ${CLUSTER_NAME}"
+          echo "Task Definition: ${TASK_DEF_ARN}"
+          echo "Network Config: ${NETWORK_CONFIG}"
+          
+          # Run one-time ECS task with migration command
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${CLUSTER_NAME}" \
+            --task-definition "${TASK_DEF_ARN}" \
+            --launch-type FARGATE \
+            --network-configuration "${NETWORK_CONFIG}" \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "auth-service",
+                "command": ["sh", "-c", "npm run migrate:up"]
+              }]
+            }' \
+            --region ${{ env.AWS_REGION }} \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "❌ Error: Failed to start migration task"
+            exit 1
+          fi
+          
+          echo "Migration task started: ${TASK_ARN}"
+          echo "Waiting for task to complete..."
+          
+          # Wait for task to complete (max 10 minutes)
+          aws ecs wait tasks-stopped \
+            --cluster "${CLUSTER_NAME}" \
+            --tasks "${TASK_ARN}" \
+            --region ${{ env.AWS_REGION }} || true
+          
+          # Get task exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${CLUSTER_NAME}" \
+            --tasks "${TASK_ARN}" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+          
+          # Get task logs
+          echo "Fetching migration task logs..."
+          LOG_GROUP="/ecs/${{ needs.terraform-plan.outputs.environment || 'dev' }}-auth-service"
+          LOG_STREAM=$(aws logs describe-log-streams \
+            --log-group-name "${LOG_GROUP}" \
+            --log-stream-name-prefix "ecs/auth-service/${TASK_ARN##*/}" \
+            --region ${{ env.AWS_REGION }} \
+            --order-by LastEventTime \
+            --descending \
+            --max-items 1 \
+            --query 'logStreams[0].logStreamName' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ]; then
+            echo "=== Migration Task Logs ==="
+            aws logs get-log-events \
+              --log-group-name "${LOG_GROUP}" \
+              --log-stream-name "${LOG_STREAM}" \
+              --region ${{ env.AWS_REGION }} \
+              --query 'events[*].message' \
+              --output text 2>/dev/null || echo "Could not retrieve logs"
+            echo "=========================="
+          fi
+          
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "✅ Database migrations completed successfully"
+          else
+            echo "❌ Error: Migration task failed with exit code: ${EXIT_CODE}"
+            exit 1
+          fi
 
       - name: Build application
         run: npm run build

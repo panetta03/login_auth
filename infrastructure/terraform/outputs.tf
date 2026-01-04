@@ -36,3 +36,13 @@ output "redis_endpoint" {
   sensitive   = true
 }
 
+output "private_subnet_ids" {
+  description = "Private subnet IDs for ECS tasks"
+  value       = module.vpc.private_subnet_ids
+}
+
+output "ecs_security_group_id" {
+  description = "ECS security group ID"
+  value       = module.ecs.security_group_id
+}
+
