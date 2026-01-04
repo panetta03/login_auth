@@ -1180,8 +1180,6 @@ jobs:
           else
             echo "✓ No old stopped tasks found"
           fi
-            echo "You can view logs manually in AWS CloudWatch Console"
-          fi
           
           # Check exit code - this is the authoritative success/failure indicator
           # Note: Exit code 254 can sometimes occur due to signal handling, but if migrations completed successfully,
