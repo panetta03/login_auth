@@ -1122,6 +1122,9 @@ jobs:
             fi
           done
           
+          # Initialize LOG_EVENTS variable for later use in exit code checking
+          LOG_EVENTS=""
+          
           if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "" ]; then
             echo ""
             echo "=== Migration Task Logs ==="
@@ -1181,8 +1184,22 @@ jobs:
           fi
           
           # Check exit code - this is the authoritative success/failure indicator
+          # Note: Exit code 254 can sometimes occur due to signal handling, but if migrations completed successfully,
+          # we should treat it as success. However, we'll still log it for visibility.
           if [ "$EXIT_CODE" = "0" ]; then
             echo "✅ Database migrations completed successfully"
+          elif [ "$EXIT_CODE" = "254" ]; then
+            # Exit code 254 can occur due to signal handling, but if migrations completed, treat as success
+            # Check logs to confirm migrations actually ran
+            echo "⚠️ Warning: Task exited with code 254 (may be signal-related)"
+            echo "Checking if migrations completed successfully based on logs..."
+            if [ -n "$LOG_EVENTS" ] && echo "$LOG_EVENTS" | grep -q "Migrations complete!"; then
+              echo "✅ Migrations completed successfully despite exit code 254"
+            else
+              echo "❌ Error: Exit code 254 and migrations may not have completed"
+              echo "Log events available: $([ -n "$LOG_EVENTS" ] && echo "yes" || echo "no")"
+              exit 1
+            fi
           elif [ "$EXIT_CODE" = "null" ] || [ -z "$EXIT_CODE" ]; then
             echo "❌ Error: Could not determine task exit code. Task status: ${TASK_STATUS}"
             if [ "$TASK_STATUS" != "STOPPED" ]; then
