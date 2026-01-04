@@ -724,7 +724,7 @@ jobs:
       ) &&
       (
         (needs.terraform-plan.outputs.has_infrastructure == 'true' && needs.terraform-apply.result == 'success') ||
-        (needs.terraform-plan.outputs.has_infrastructure != 'true' || needs.terraform-plan.result == 'skipped')
+        (needs.terraform-plan.outputs.has_infrastructure != 'true' && (needs.terraform-apply.result == 'skipped' || needs.terraform-apply.result == 'success'))
       )
     environment:
       name: ${{ needs.terraform-plan.outputs.environment || github.event.inputs.environment || 'dev' }}
