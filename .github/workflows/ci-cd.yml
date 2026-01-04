@@ -1091,12 +1091,13 @@ jobs:
           TASK_ID="${TASK_ARN##*/}"
           CONTAINER_NAME="auth-service"
           
-          echo "Fetching logs from CloudWatch (log group: ${LOG_GROUP})..."
+          echo "Fetching logs from CloudWatch (log group: ${LOG_GROUP}, task ID: ${TASK_ID})..."
           LOG_STREAM=""
-          MAX_RETRIES=5
+          MAX_RETRIES=10
           RETRY_COUNT=0
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            # Try to find the log stream - ECS uses format: ecs/{container-name}/{task-id}
             LOG_STREAM=$(aws logs describe-log-streams \
               --log-group-name "${LOG_GROUP}" \
               --log-stream-name-prefix "ecs/${CONTAINER_NAME}/${TASK_ID}" \
@@ -1105,32 +1106,76 @@ jobs:
               --descending \
               --max-items 1 \
               --query 'logStreams[0].logStreamName' \
-              --output text 2>/dev/null || echo "")
+              --output text 2>/dev/null)
             
-            if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "" ]; then
+            # Check if we got a valid log stream
+            if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "" ]; then
+              echo "✓ Found log stream: ${LOG_STREAM}"
               break
             fi
             
             RETRY_COUNT=$((RETRY_COUNT + 1))
             if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "Logs not available yet, retrying in 3 seconds... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-              sleep 3
+              echo "Logs not available yet, retrying in 5 seconds... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+              sleep 5
             fi
           done
           
-          if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "" ]; then
+          if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "" ]; then
+            echo ""
             echo "=== Migration Task Logs ==="
-            aws logs get-log-events \
+            LOG_EVENTS=$(aws logs get-log-events \
               --log-group-name "${LOG_GROUP}" \
               --log-stream-name "${LOG_STREAM}" \
               --region ${{ env.AWS_REGION }} \
               --query 'events[*].message' \
-              --output text 2>/dev/null || echo "Could not retrieve log events"
+              --output text 2>/dev/null)
+            
+            if [ -n "$LOG_EVENTS" ]; then
+              echo "$LOG_EVENTS"
+            else
+              echo "No log events found in stream"
+            fi
             echo "=============================="
+            echo ""
           else
             echo "⚠️ Warning: Could not retrieve logs after ${MAX_RETRIES} attempts"
             echo "Log group: ${LOG_GROUP}"
             echo "Task ID: ${TASK_ID}"
+            echo "Container: ${CONTAINER_NAME}"
+            echo ""
+            echo "Attempting to list recent log streams for debugging..."
+            aws logs describe-log-streams \
+              --log-group-name "${LOG_GROUP}" \
+              --log-stream-name-prefix "ecs/${CONTAINER_NAME}/" \
+              --region ${{ env.AWS_REGION }} \
+              --order-by LastEventTime \
+              --descending \
+              --max-items 5 \
+              --query 'logStreams[*].logStreamName' \
+              --output text 2>/dev/null || echo "Could not list log streams"
+            echo ""
+            echo "You can view logs manually in AWS CloudWatch Console:"
+            echo "https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/${LOG_GROUP//\//$252F}"
+          fi
+          
+          # Note: ECS automatically cleans up stopped tasks after a retention period
+          # We'll just log information about old tasks for visibility
+          echo ""
+          echo "Checking for old ECS tasks..."
+          OLD_TASKS=$(aws ecs list-tasks \
+            --cluster "${CLUSTER_NAME}" \
+            --desired-status STOPPED \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskArns[*]' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$OLD_TASKS" ] && [ "$OLD_TASKS" != "None" ] && [ "$OLD_TASKS" != "" ]; then
+            TASK_COUNT=$(echo "$OLD_TASKS" | tr '\t' '\n' | wc -l | tr -d ' ')
+            echo "Found ${TASK_COUNT} stopped tasks (AWS automatically cleans these up after retention period)"
+          else
+            echo "✓ No old stopped tasks found"
+          fi
             echo "You can view logs manually in AWS CloudWatch Console"
           fi
           
