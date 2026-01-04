@@ -829,25 +829,25 @@ jobs:
           SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
           
           # Create network configuration JSON
-          # SUBNETS is a JSON array string from Terraform output (GitHub Actions outputs are strings)
-          # Debug: Show what we're trying to parse
-          echo "Debug: SUBNETS value: $SUBNETS"
-          echo "Debug: SUBNETS length: ${#SUBNETS}"
+          # SUBNETS may be in different formats from Terraform/GitHub Actions
+          # Handle both valid JSON arrays and unquoted array formats
           
-          # Parse the JSON array - try multiple approaches
-          # First, try parsing directly (it should be valid JSON)
+          # Try parsing as valid JSON first
           if echo "$SUBNETS" | jq -e '.' >/dev/null 2>&1; then
             SUBNETS_JSON=$(echo "$SUBNETS" | jq -c '.')
-            echo "Debug: Parsed as raw JSON"
-          elif echo "\"$SUBNETS\"" | jq -e 'fromjson' >/dev/null 2>&1; then
-            SUBNETS_JSON=$(echo "\"$SUBNETS\"" | jq -c 'fromjson')
-            echo "Debug: Parsed as JSON-encoded string"
           else
-            echo "⚠️ Warning: Failed to parse SUBNETS, using empty array"
-            SUBNETS_JSON="[]"
+            # If not valid JSON, it might be unquoted like [subnet-xxx,subnet-yyy]
+            # Convert to proper JSON by splitting on comma and wrapping in quotes
+            SUBNETS_JSON=$(echo "$SUBNETS" | \
+              sed 's/\[//;s/\]//' | \
+              awk -F',' '{printf "["; for(i=1;i<=NF;i++) {gsub(/^[ \t]+|[ \t]+$/, "", $i); if(i>1) printf ","; printf "\"%s\"", $i} printf "]"}')
+            
+            # Validate the result
+            if ! echo "$SUBNETS_JSON" | jq -e '.' >/dev/null 2>&1; then
+              echo "❌ Error: Failed to parse SUBNETS: $SUBNETS"
+              exit 1
+            fi
           fi
-          
-          echo "Debug: SUBNETS_JSON: $SUBNETS_JSON"
           
           NETWORK_CONFIG=$(jq -n \
             --argjson subnets "$SUBNETS_JSON" \
