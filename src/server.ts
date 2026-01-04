@@ -1,3 +1,4 @@
+// Server entry point
 import app from './app';
 import { logger } from './utils/logger';
 import { config } from './config';
