@@ -830,8 +830,9 @@ jobs:
           
           # Create network configuration JSON
           # SUBNETS is a JSON array string from Terraform output (GitHub Actions outputs are strings)
-          # Parse the string as JSON using fromjson
-          SUBNETS_JSON=$(echo "$SUBNETS" | jq -c 'fromjson' 2>/dev/null || echo "[]")
+          # The value is already valid JSON, so parse it directly (not as a JSON-encoded string)
+          # Try parsing as raw JSON first, fallback to fromjson if it's double-encoded
+          SUBNETS_JSON=$(echo "$SUBNETS" | jq -c '.' 2>/dev/null || echo "$SUBNETS" | jq -c 'fromjson' 2>/dev/null || echo "[]")
           
           NETWORK_CONFIG=$(jq -n \
             --argjson subnets "$SUBNETS_JSON" \
