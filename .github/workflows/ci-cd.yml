@@ -867,11 +867,54 @@ jobs:
           cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max
           platforms: linux/amd64
 
+      - name: Get database URL from Terraform
+        if: |
+          steps.get-ecs-details.outcome == 'success' &&
+          steps.build-image.outcome == 'success' &&
+          (
+            needs.terraform-apply.result == 'success' ||
+            needs.terraform-plan.result == 'skipped'
+          )
+        id: get-database-url
+        run: |
+          echo "Getting database URL from Terraform outputs..."
+          
+          # Determine environment
+          ENV="${{ needs.terraform-plan.outputs.environment || 'dev' }}"
+          
+          # Setup Terraform
+          cd infrastructure/terraform
+          terraform init \
+            -backend-config="bucket=${{ needs.terraform-plan.outputs.state_bucket_name }}" \
+            -backend-config="key=${ENV}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ needs.terraform-plan.outputs.state_bucket_name }}-lock" \
+            -reconfigure
+          
+          # Get database URL from outputs
+          DATABASE_URL=$(terraform output -json database_url 2>/dev/null | jq -r '.value // empty' || echo "")
+          
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
+            echo "⚠️ Warning: Could not get database_url from Terraform outputs"
+            DATABASE_URL=$(terraform output -raw database_url 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
+            echo "❌ Error: database_url is not available from Terraform outputs"
+            exit 1
+          fi
+          
+          echo "✓ Database URL retrieved (hidden for security)"
+          # Store in a way that can be used in the next step
+          echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+        continue-on-error: false
+
       - name: Run database migrations as ECS task
         if: |
           steps.get-ecs-details.outcome == 'success' &&
           steps.get-ecs-details.outputs.cluster_name != '' &&
           steps.build-image.outcome == 'success' &&
+          steps.get-database-url.outcome == 'success' &&
           (
             needs.terraform-apply.result == 'success' ||
             needs.terraform-plan.result == 'skipped'
@@ -890,9 +933,15 @@ jobs:
           EXISTING_TASK_DEF_ARN="${{ steps.get-ecs-details.outputs.task_def_arn }}"
           SUBNETS="${{ steps.get-ecs-details.outputs.private_subnets }}"
           SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
+          DATABASE_URL="${DATABASE_URL}"
           
           echo "Using newly built image: ${FULL_IMAGE_URI}"
           echo "Base task definition: ${EXISTING_TASK_DEF_ARN}"
+          
+          if [ -z "$DATABASE_URL" ]; then
+            echo "❌ Error: DATABASE_URL is not set"
+            exit 1
+          fi
           
           # Get the task definition JSON and update it to use the new image
           TASK_DEF_JSON=$(aws ecs describe-task-definition \
@@ -951,17 +1000,29 @@ jobs:
           echo "Network Config: ${NETWORK_CONFIG}"
           
           # Run one-time ECS task with migration command
+          # Pass DATABASE_URL as environment variable override
+          # Note: environment variables in overrides use "environment" array
+          OVERRIDES_JSON=$(jq -n \
+            --arg db_url "$DATABASE_URL" \
+            '{
+              "containerOverrides": [{
+                "name": "auth-service",
+                "command": ["sh", "-c", "npm run migrate:up"],
+                "environment": [
+                  {
+                    "name": "DATABASE_URL",
+                    "value": $db_url
+                  }
+                ]
+              }]
+            }')
+          
           TASK_ARN=$(aws ecs run-task \
             --cluster "${CLUSTER_NAME}" \
             --task-definition "${TASK_DEF_ARN}" \
             --launch-type FARGATE \
             --network-configuration "${NETWORK_CONFIG}" \
-            --overrides '{
-              "containerOverrides": [{
-                "name": "auth-service",
-                "command": ["sh", "-c", "npm run migrate:up"]
-              }]
-            }' \
+            --overrides "${OVERRIDES_JSON}" \
             --region ${{ env.AWS_REGION }} \
             --query 'tasks[0].taskArn' \
             --output text)
@@ -1004,32 +1065,52 @@ jobs:
             echo "Stopped reason: ${STOPPED_REASON}"
           fi
           
-          # Fetch logs if available (single API call)
+          # Fetch logs with retry (CloudWatch logs can take a few seconds to propagate)
           LOG_GROUP="/ecs/${{ needs.terraform-plan.outputs.environment || 'dev' }}-auth-service"
           TASK_ID="${TASK_ARN##*/}"
           CONTAINER_NAME="auth-service"
           
-          LOG_STREAM=$(aws logs describe-log-streams \
-            --log-group-name "${LOG_GROUP}" \
-            --log-stream-name-prefix "ecs/${CONTAINER_NAME}/${TASK_ID}" \
-            --region ${{ env.AWS_REGION }} \
-            --order-by LastEventTime \
-            --descending \
-            --max-items 1 \
-            --query 'logStreams[0].logStreamName' \
-            --output text 2>/dev/null || echo "")
+          echo "Fetching logs from CloudWatch (log group: ${LOG_GROUP})..."
+          LOG_STREAM=""
+          MAX_RETRIES=5
+          RETRY_COUNT=0
           
-          if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ]; then
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            LOG_STREAM=$(aws logs describe-log-streams \
+              --log-group-name "${LOG_GROUP}" \
+              --log-stream-name-prefix "ecs/${CONTAINER_NAME}/${TASK_ID}" \
+              --region ${{ env.AWS_REGION }} \
+              --order-by LastEventTime \
+              --descending \
+              --max-items 1 \
+              --query 'logStreams[0].logStreamName' \
+              --output text 2>/dev/null || echo "")
+            
+            if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "" ]; then
+              break
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Logs not available yet, retrying in 3 seconds... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+              sleep 3
+            fi
+          done
+          
+          if [ -n "$LOG_STREAM" ] && [ "$LOG_STREAM" != "None" ] && [ "$LOG_STREAM" != "" ]; then
             echo "=== Migration Task Logs ==="
             aws logs get-log-events \
               --log-group-name "${LOG_GROUP}" \
               --log-stream-name "${LOG_STREAM}" \
               --region ${{ env.AWS_REGION }} \
               --query 'events[*].message' \
-              --output text 2>/dev/null || echo "Could not retrieve logs"
+              --output text 2>/dev/null || echo "Could not retrieve log events"
             echo "=============================="
           else
-            echo "⚠️ Logs not available yet (this is normal if task just completed)"
+            echo "⚠️ Warning: Could not retrieve logs after ${MAX_RETRIES} attempts"
+            echo "Log group: ${LOG_GROUP}"
+            echo "Task ID: ${TASK_ID}"
+            echo "You can view logs manually in AWS CloudWatch Console"
           fi
           
           # Check exit code - this is the authoritative success/failure indicator
