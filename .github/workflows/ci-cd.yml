@@ -811,11 +811,27 @@ jobs:
         working-directory: infrastructure/terraform
         continue-on-error: true
 
+      - name: Get updated task definition after service update
+        id: get-updated-task-def
+        if: steps.update-service.outcome == 'success'
+        run: |
+          echo "Getting updated task definition ARN from ECS service..."
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
+          echo "Updated task definition: ${TASK_DEF_ARN}"
+
       - name: Run database migrations as ECS task
         if: |
           steps.get-ecs-details.outcome == 'success' &&
-          steps.get-ecs-details.outputs.task_def_arn != '' &&
           steps.get-ecs-details.outputs.cluster_name != '' &&
+          steps.get-updated-task-def.outcome == 'success' &&
+          steps.get-updated-task-def.outputs.task_def_arn != '' &&
           (
             needs.terraform-apply.result == 'success' ||
             needs.terraform-plan.result == 'skipped'
@@ -824,7 +840,8 @@ jobs:
           echo "Running database migrations as one-time ECS task..."
           
           CLUSTER_NAME="${{ steps.get-ecs-details.outputs.cluster_name }}"
-          TASK_DEF_ARN="${{ steps.get-ecs-details.outputs.task_def_arn }}"
+          # Use the updated task definition (after service update with new image)
+          TASK_DEF_ARN="${{ steps.get-updated-task-def.outputs.task_def_arn }}"
           SUBNETS="${{ steps.get-ecs-details.outputs.private_subnets }}"
           SECURITY_GROUP="${{ steps.get-ecs-details.outputs.security_group }}"
           
