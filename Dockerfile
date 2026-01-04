@@ -30,6 +30,9 @@ RUN npm ci --only=production
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy migration files (needed for running migrations in production)
+COPY --from=builder /app/src/database/migrations ./src/database/migrations
+
 # Create non-root user
 RUN useradd -m appuser 2>/dev/null || true && chown -R appuser:appuser /app
 USER appuser
