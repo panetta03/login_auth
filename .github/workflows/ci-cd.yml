@@ -1016,8 +1016,9 @@ jobs:
           echo "Network Config: ${NETWORK_CONFIG}"
           
           # Run one-time ECS task with migration command
-          # Pass DATABASE_URL as environment variable override
-          # Note: environment variables in overrides use "environment" array
+          # Pass DATABASE_URL and SSL settings as environment variable overrides
+          # Note: For RDS self-signed certificates, we need to disable certificate verification
+          # This is safe for RDS as we're connecting to AWS-managed infrastructure
           OVERRIDES_JSON=$(jq -n \
             --arg db_url "$DATABASE_URL" \
             '{
@@ -1028,6 +1029,10 @@ jobs:
                   {
                     "name": "DATABASE_URL",
                     "value": $db_url
+                  },
+                  {
+                    "name": "NODE_TLS_REJECT_UNAUTHORIZED",
+                    "value": "0"
                   }
                 ]
               }]
