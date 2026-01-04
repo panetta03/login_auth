@@ -1019,12 +1019,13 @@ jobs:
           # Pass DATABASE_URL and SSL settings as environment variable overrides
           # Note: For RDS self-signed certificates, we need to disable certificate verification
           # This is safe for RDS as we're connecting to AWS-managed infrastructure
+          # Use explicit exit code handling to ensure proper success/failure reporting
           OVERRIDES_JSON=$(jq -n \
             --arg db_url "$DATABASE_URL" \
             '{
               "containerOverrides": [{
                 "name": "auth-service",
-                "command": ["sh", "-c", "npm run migrate:up"],
+                "command": ["sh", "-c", "npm run migrate:up || exit 1"],
                 "environment": [
                   {
                     "name": "DATABASE_URL",
